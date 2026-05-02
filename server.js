@@ -13,14 +13,16 @@ const MAP_DURATION_MS = 5 * 60 * 1000;   // 5 min de course
 const TRANSITION_MS = 12 * 1000;          // 12 sec entre 2 maps (annonce des scores)
 
 const app = express();
-app.get('/', (req, res) => {
+// Sert le client (jeu) depuis public/index.html
+app.use(express.static(__dirname + '/public'));
+app.get('/status', (req, res) => {
   res.send(`
     <html><body style="font-family: monospace; background: #1a2030; color: #ff5533; padding: 40px">
     <h1>🏍 Moto Race Server</h1>
-    <p>Serveur de salons en ligne actif.</p>
     <p>Salons actifs : ${rooms.size}</p>
     <p>Joueurs connectés : ${totalPlayers()}</p>
     <p>Map actuelle (salon "main") : ${rooms.get('main')?.currentMapIdx ?? '—'}</p>
+    <p><a href="/" style="color:#ffdd44">→ Lancer le jeu</a></p>
     </body></html>
   `);
 });

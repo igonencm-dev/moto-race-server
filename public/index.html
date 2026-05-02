@@ -1,0 +1,3730 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Moto Race</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; }
+    #game { width: 100%; height: 100%; }
+    canvas { display: block; }
+    #peerOverlay {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(20, 25, 40, 0.96);
+      color: white;
+      padding: 32px;
+      border-radius: 14px;
+      min-width: 340px;
+      max-width: 420px;
+      text-align: center;
+      box-shadow: 0 16px 60px rgba(0,0,0,0.7);
+      z-index: 100;
+      display: none;
+      border: 1px solid rgba(255, 85, 51, 0.3);
+    }
+    #peerOverlay h2 { margin-bottom: 14px; font-size: 22px; color: #ff5533; }
+    #peerOverlay p { margin: 8px 0; font-size: 14px; line-height: 1.4; opacity: 0.9; }
+    #peerOverlay input {
+      padding: 10px 12px; font-size: 14px; width: 100%; margin: 8px 0;
+      border-radius: 6px; border: 1px solid #444; background: #1a1a25;
+      color: white; font-family: monospace;
+    }
+    #peerOverlay input:focus { outline: none; border-color: #ff5533; }
+    #peerOverlay button {
+      padding: 10px 20px; font-size: 14px; margin: 4px;
+      background: #ff5533; color: white; border: none;
+      border-radius: 6px; cursor: pointer; font-weight: 600;
+      transition: background 0.15s;
+    }
+    #peerOverlay button:hover { background: #ff7755; }
+    #peerOverlay button.secondary { background: #444; }
+    #peerOverlay button.secondary:hover { background: #555; }
+    #peerOverlay .id-display {
+      font-family: monospace; font-size: 18px; background: #1a1a25;
+      padding: 12px 14px; border-radius: 6px; margin: 12px 0;
+      word-break: break-all; user-select: all; border: 1px dashed #555;
+    }
+    #peerOverlay .copy-btn { font-size: 12px; padding: 6px 12px; margin-bottom: 12px; }
+    #peerOverlay .status {
+      font-size: 13px; opacity: 0.75; margin: 12px 0;
+      min-height: 20px;
+    }
+    #peerOverlay .status.error { color: #ff7766; opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="peerOverlay"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+  <script>
+  // ===========================================================
+  // MOTO RACE - jeu solo + multi WebRTC
+  // ===========================================================
+
+  const Matter = Phaser.Physics.Matter.Matter;
+
+  // ===== NIVEAUX =====
+  const LEVELS = [
+    {
+      name: 'Niveau 1 — Échauffement',
+      terrain: [
+        { x: -200, y: 400 }, { x: 700, y: 400 },
+        { x: 850, y: 360 }, { x: 1000, y: 400 },
+        { x: 1400, y: 400 },
+        { x: 1600, y: 320 }, { x: 1800, y: 320 },
+        { x: 2000, y: 400 },
+        { x: 2400, y: 400 },
+        { x: 2550, y: 360 }, { x: 2700, y: 400 },
+        { x: 2850, y: 360 }, { x: 3000, y: 400 },
+        { x: 3500, y: 400 }
+      ],
+      obstacles: [],
+      finishX: 3500,
+      bikeStartY: 340
+    },
+    {
+      name: 'Niveau 2 — Technique',
+      terrain: [
+        { x: -200, y: 400 }, { x: 500, y: 400 },
+        { x: 800, y: 250 }, { x: 1100, y: 250 },
+        { x: 1300, y: 400 },
+        { x: 1500, y: 360 }, { x: 1700, y: 420 },
+        { x: 1900, y: 360 }, { x: 2100, y: 420 },
+        { x: 2300, y: 380 },
+        { x: 2700, y: 380 },
+        { x: 2900, y: 220 },
+        { x: 3400, y: 400 },
+        { x: 4000, y: 400 }
+      ],
+      obstacles: [],
+      finishX: 4000,
+      bikeStartY: 340
+    },
+    {
+      name: 'Niveau 3 — Hardcore',
+      terrain: [
+        { x: -200, y: 400 }, { x: 400, y: 400 },
+        { x: 600, y: 280 }, { x: 800, y: 380 },
+        { x: 1000, y: 250 }, { x: 1200, y: 380 },
+        { x: 1500, y: 380 },
+        { x: 1650, y: 300 }, { x: 1800, y: 420 },
+        { x: 1950, y: 300 }, { x: 2100, y: 420 },
+        { x: 2250, y: 300 }, { x: 2400, y: 420 },
+        { x: 2700, y: 420 },
+        { x: 2900, y: 200 },
+        { x: 3500, y: 420 },
+        { x: 4200, y: 420 },
+        { x: 4500, y: 380 }, { x: 4800, y: 420 }
+      ],
+      obstacles: [],
+      finishX: 4800,
+      bikeStartY: 340
+    },
+    {
+      name: 'Niveau 4 — Cauchemar',
+      terrain: [
+        { x: -200, y: 400 }, { x: 250, y: 400 },
+        // vagues serrées
+        { x: 380, y: 340 }, { x: 510, y: 420 },
+        { x: 640, y: 340 }, { x: 770, y: 420 },
+        { x: 900, y: 340 }, { x: 1030, y: 420 },
+        // plat
+        { x: 1300, y: 420 },
+        // rampe + saut
+        { x: 1500, y: 180 },
+        { x: 2200, y: 420 },
+        // bosses
+        { x: 2400, y: 380 }, { x: 2600, y: 440 },
+        { x: 2800, y: 380 }, { x: 3000, y: 440 },
+        // plat
+        { x: 3200, y: 440 },
+        // rampe vers plateau haut
+        { x: 3400, y: 240 },
+        { x: 3700, y: 240 },
+        // descente raide
+        { x: 3900, y: 440 },
+        // saut final
+        { x: 4100, y: 440 },
+        { x: 4350, y: 200 },
+        { x: 5000, y: 440 },
+        { x: 5500, y: 440 }
+      ],
+      obstacles: [],
+      finishX: 5500,
+      bikeStartY: 340
+    },
+    {
+      name: 'Niveau 5 — Impossible',
+      terrain: [
+        { x: -200, y: 400 }, { x: 200, y: 400 },
+        // demi-pipe
+        { x: 350, y: 220 }, { x: 420, y: 220 },
+        { x: 580, y: 440 },
+        // vagues extrêmes
+        { x: 720, y: 340 }, { x: 860, y: 460 },
+        { x: 1000, y: 340 }, { x: 1140, y: 460 },
+        { x: 1280, y: 340 }, { x: 1420, y: 460 },
+        // rampe + méga-saut
+        { x: 1650, y: 460 },
+        { x: 1850, y: 160 },
+        { x: 2700, y: 440 },
+        // vagues
+        { x: 2900, y: 390 }, { x: 3100, y: 460 },
+        { x: 3250, y: 390 }, { x: 3400, y: 460 },
+        // plateau haut très long
+        { x: 3500, y: 240 },
+        { x: 4000, y: 240 },
+        // descente
+        { x: 4200, y: 460 },
+        // saut final énorme
+        { x: 4400, y: 460 },
+        { x: 4600, y: 130 },
+        { x: 5500, y: 460 },
+        { x: 6000, y: 460 }
+      ],
+      obstacles: [],
+      finishX: 6000,
+      bikeStartY: 340
+    },
+    {
+      name: 'Niveau 6 — Slalom',
+      terrain: [
+        { x: -200, y: 400 }, { x: 300, y: 400 },
+        { x: 380, y: 350 }, { x: 460, y: 420 },
+        { x: 540, y: 350 }, { x: 620, y: 420 },
+        { x: 700, y: 350 }, { x: 780, y: 420 },
+        { x: 860, y: 350 }, { x: 940, y: 420 },
+        { x: 1020, y: 350 }, { x: 1100, y: 420 },
+        { x: 1300, y: 420 },
+        { x: 1450, y: 320 }, { x: 1600, y: 420 },
+        { x: 1750, y: 320 }, { x: 1900, y: 420 },
+        { x: 2050, y: 320 }, { x: 2200, y: 420 },
+        { x: 2500, y: 420 },
+        { x: 2700, y: 290 }, { x: 2900, y: 420 },
+        { x: 3100, y: 290 }, { x: 3300, y: 420 },
+        { x: 3500, y: 290 }, { x: 3700, y: 420 },
+        { x: 4000, y: 420 },
+        { x: 4200, y: 250 }, { x: 4400, y: 420 },
+        { x: 4600, y: 250 }, { x: 4800, y: 420 },
+        { x: 5500, y: 420 }
+      ],
+      obstacles: [],
+      finishX: 5500,
+      bikeStartY: 340
+    },
+    {
+      name: 'Niveau 7 — Bowl',
+      terrain: [
+        { x: -200, y: 400 }, { x: 200, y: 400 },
+        // descente raide vers le creux
+        { x: 400, y: 480 }, { x: 600, y: 540 }, { x: 800, y: 580 },
+        // creux long et plat
+        { x: 1000, y: 600 }, { x: 2500, y: 600 },
+        // remontée raide
+        { x: 2700, y: 580 }, { x: 2900, y: 540 },
+        { x: 3100, y: 480 }, { x: 3300, y: 400 },
+        // plateau intermédiaire
+        { x: 3700, y: 400 },
+        // saut final
+        { x: 3900, y: 230 },
+        { x: 4700, y: 400 }
+      ],
+      obstacles: [],
+      finishX: 4700,
+      bikeStartY: 340
+    },
+    {
+      name: 'Niveau 8 — Acrobatie',
+      terrain: [
+        { x: -200, y: 400 }, { x: 300, y: 400 },
+        // 1er saut court (rampe)
+        { x: 450, y: 280 },
+        { x: 800, y: 400 },
+        { x: 1100, y: 400 },
+        // 2ème saut moyen
+        { x: 1300, y: 180 },
+        { x: 1950, y: 400 },
+        { x: 2200, y: 400 },
+        // 3ème saut grand
+        { x: 2400, y: 80 },
+        { x: 3300, y: 400 },
+        // bosses techniques
+        { x: 3500, y: 360 }, { x: 3700, y: 420 },
+        { x: 3900, y: 360 }, { x: 4100, y: 420 },
+        // saut final énorme
+        { x: 4300, y: 420 },
+        { x: 4500, y: 30 },
+        { x: 5600, y: 420 }
+      ],
+      obstacles: [],
+      finishX: 5600,
+      bikeStartY: 340
+    }
+  ];
+
+  // ===========================================================
+  // SYSTÈME AUDIO (Web Audio API, sons synthétisés)
+  // ===========================================================
+  class AudioSystem {
+    constructor() {
+      try {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) { this.ctx = null; return; }
+      this.muted = false;
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.value = 0.07;
+      this.musicGain.connect(this.ctx.destination);
+      this.sfxGain = this.ctx.createGain();
+      this.sfxGain.gain.value = 0.4;
+      this.sfxGain.connect(this.ctx.destination);
+      this.engineNode = null;
+      this.musicPlaying = false;
+    }
+
+    resume() {
+      if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    }
+
+    startEngine() {
+      if (!this.ctx || this.engineNode) return;
+      const ctx = this.ctx;
+      const baseFreq = 55;
+
+      // 2 saw légèrement detunés → grain métallique riche
+      const osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = baseFreq;
+      osc1.detune.value = -10;
+
+      const osc2 = ctx.createOscillator();
+      osc2.type = 'sawtooth';
+      osc2.frequency.value = baseFreq;
+      osc2.detune.value = 10;
+
+      // sub triangle pour le poids dans les graves
+      const sub = ctx.createOscillator();
+      sub.type = 'triangle';
+      sub.frequency.value = baseFreq / 2;
+
+      const mixer = ctx.createGain();
+      mixer.gain.value = 0.5;
+      osc1.connect(mixer);
+      osc2.connect(mixer);
+      sub.connect(mixer);
+
+      // bruit léger pour le grain (diesel)
+      const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const noiseData = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < noiseData.length; i++) noiseData[i] = (Math.random() * 2 - 1) * 0.4;
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = noiseBuffer;
+      noiseSrc.loop = true;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.04;
+      noiseSrc.connect(noiseGain);
+      noiseGain.connect(mixer);
+
+      // filtre passe-bas avec résonance pour le growl
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 500;
+      filter.Q.value = 7;
+      mixer.connect(filter);
+
+      // Master gain modulé par LFO (pulsation 4-temps)
+      const masterGain = ctx.createGain();
+      masterGain.gain.value = 0;
+      filter.connect(masterGain);
+      masterGain.connect(this.sfxGain);
+
+      // LFO sine pour la pulsation
+      const lfo = ctx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 6;
+      const lfoDepth = ctx.createGain();
+      lfoDepth.gain.value = 0;  // amplitude de modulation, sera réglée par setEngineSpeed
+      lfo.connect(lfoDepth);
+      lfoDepth.connect(masterGain.gain);
+
+      // Niveau de base (constant) qu'on additionne au LFO
+      const baseLevel = ctx.createConstantSource();
+      baseLevel.offset.value = 0;
+      baseLevel.connect(masterGain.gain);
+
+      osc1.start(); osc2.start(); sub.start();
+      noiseSrc.start();
+      lfo.start(); baseLevel.start();
+
+      this.engineNode = { osc1, osc2, sub, lfo, lfoDepth, baseLevel, filter, masterGain, noiseSrc };
+    }
+
+    setEngineSpeed(speed) {
+      if (!this.engineNode) return;
+      const t = Math.min(1, Math.max(0, speed));
+      const ctx = this.ctx;
+      const baseFreq = 55 + t * 130;          // 55 → 185 Hz
+      const lfoFreq = 5 + t * 20;             // pulsation 5 → 25 Hz
+      const filterFreq = 350 + t * 1400;      // filtre s'ouvre
+      const level = 0.05 + t * 0.13;          // volume base
+      const lfoAmp = 0.04 + t * 0.05;         // pulsation plus marquée à fond
+
+      this.engineNode.osc1.frequency.setTargetAtTime(baseFreq, ctx.currentTime, 0.07);
+      this.engineNode.osc2.frequency.setTargetAtTime(baseFreq, ctx.currentTime, 0.07);
+      this.engineNode.sub.frequency.setTargetAtTime(baseFreq / 2, ctx.currentTime, 0.07);
+      this.engineNode.lfo.frequency.setTargetAtTime(lfoFreq, ctx.currentTime, 0.07);
+      this.engineNode.filter.frequency.setTargetAtTime(filterFreq, ctx.currentTime, 0.07);
+      this.engineNode.baseLevel.offset.setTargetAtTime(level, ctx.currentTime, 0.08);
+      this.engineNode.lfoDepth.gain.setTargetAtTime(lfoAmp, ctx.currentTime, 0.1);
+    }
+
+    stopEngine() {
+      if (!this.engineNode) return;
+      const node = this.engineNode;
+      const ctx = this.ctx;
+      node.baseLevel.offset.setTargetAtTime(0, ctx.currentTime, 0.05);
+      node.lfoDepth.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+      setTimeout(() => {
+        try {
+          node.osc1.stop(); node.osc2.stop(); node.sub.stop();
+          node.lfo.stop(); node.baseLevel.stop(); node.noiseSrc.stop();
+        } catch (e) {}
+      }, 300);
+      this.engineNode = null;
+    }
+
+    playCrash() {
+      if (!this.ctx) return;
+      const ctx = this.ctx;
+      const noise = ctx.createBufferSource();
+      const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      noise.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 700;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.6, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.sfxGain);
+      noise.start();
+      noise.stop(ctx.currentTime + 0.5);
+    }
+
+    playBump() {
+      if (!this.ctx) return;
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(120, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.15);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.2);
+    }
+
+    playFinish() {
+      if (!this.ctx) return;
+      const notes = [523, 659, 784, 1047];
+      notes.forEach((freq, i) => {
+        const t = this.ctx.currentTime + i * 0.12;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+        osc.start(t);
+        osc.stop(t + 0.25);
+      });
+    }
+
+    playFlip() {
+      if (!this.ctx) return;
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.3);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    }
+
+    playClick() {
+      if (!this.ctx) return;
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = 600;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.06);
+    }
+
+    startMusic() {
+      if (!this.ctx || this.musicPlaying) return;
+      this.musicPlaying = true;
+      const tempo = 110;
+      const beat = 60 / tempo;
+      // arpèges en Am — Am/F/C/G
+      const chords = [
+        [220, 261, 329],  // Am
+        [174, 220, 261],  // F
+        [261, 329, 392],  // C
+        [196, 246, 294]   // G
+      ];
+
+      const playLoop = (startT) => {
+        if (!this.musicPlaying) return;
+        let t = startT;
+        chords.forEach(chord => {
+          for (let step = 0; step < 8; step++) {
+            const freq = chord[step % chord.length] * (step >= 4 ? 2 : 1);
+            const noteT = t + step * beat * 0.5;
+            const osc = this.ctx.createOscillator();
+            osc.type = 'triangle';
+            osc.frequency.value = freq;
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0, noteT);
+            gain.gain.linearRampToValueAtTime(0.13, noteT + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, noteT + beat * 0.45);
+            osc.connect(gain);
+            gain.connect(this.musicGain);
+            osc.start(noteT);
+            osc.stop(noteT + beat * 0.5);
+          }
+          // bass
+          const bassOsc = this.ctx.createOscillator();
+          bassOsc.type = 'sine';
+          bassOsc.frequency.value = chord[0] / 2;
+          const bassGain = this.ctx.createGain();
+          bassGain.gain.setValueAtTime(0, t);
+          bassGain.gain.linearRampToValueAtTime(0.18, t + 0.05);
+          bassGain.gain.setValueAtTime(0.18, t + beat * 3.5);
+          bassGain.gain.exponentialRampToValueAtTime(0.001, t + beat * 4);
+          bassOsc.connect(bassGain);
+          bassGain.connect(this.musicGain);
+          bassOsc.start(t);
+          bassOsc.stop(t + beat * 4);
+          t += beat * 4;
+        });
+        const total = beat * 4 * chords.length;
+        this.musicTimeout = setTimeout(() => playLoop(this.ctx.currentTime), total * 1000 - 50);
+      };
+
+      playLoop(this.ctx.currentTime);
+    }
+
+    stopMusic() {
+      this.musicPlaying = false;
+      if (this.musicTimeout) clearTimeout(this.musicTimeout);
+    }
+
+    setMusicVolume(v) {
+      if (this.musicGain) this.musicGain.gain.value = v;
+    }
+
+    toggleMute() {
+      if (!this.ctx) return;
+      this.muted = !this.muted;
+      this.musicGain.gain.value = this.muted ? 0 : 0.07;
+      this.sfxGain.gain.value = this.muted ? 0 : 0.4;
+      return this.muted;
+    }
+  }
+
+  window.audio = new AudioSystem();
+
+  // ===========================================================
+  // LEADERBOARD ONLINE (Supabase)
+  // Remplace SUPABASE_URL et SUPABASE_ANON_KEY par tes valeurs.
+  // ===========================================================
+  const Leaderboard = {
+    url: 'https://jnteocwbrvzmhvakhnzi.supabase.co',
+    key: 'sb_publishable_BqsowIUuw2MSHDgvDjmVUA_T_FMIyoB',
+
+    isConfigured() {
+      return this.url && this.url !== 'SUPABASE_URL'
+        && this.key && this.key !== 'SUPABASE_ANON_KEY';
+    },
+
+    async submit(level, pseudo, time) {
+      if (!this.isConfigured()) return false;
+      try {
+        const res = await fetch(`${this.url}/rest/v1/moto_scores`, {
+          method: 'POST',
+          headers: {
+            'apikey': this.key,
+            'Authorization': `Bearer ${this.key}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ pseudo, level, time: parseFloat(time.toFixed(2)) })
+        });
+        return res.ok;
+      } catch (e) { console.warn('Leaderboard submit failed:', e); return false; }
+    },
+
+    async top(level, n = 10) {
+      if (!this.isConfigured()) return [];
+      try {
+        const res = await fetch(`${this.url}/rest/v1/moto_scores?level=eq.${level}&order=time.asc&limit=${n}`, {
+          headers: {
+            'apikey': this.key,
+            'Authorization': `Bearer ${this.key}`
+          }
+        });
+        if (!res.ok) return [];
+        return await res.json();
+      } catch (e) { console.warn('Leaderboard fetch failed:', e); return []; }
+    }
+  };
+
+  // ===========================================================
+  // CONNEXION SALON SERVEUR (WebSocket)
+  // L'URL est récupérée depuis localStorage si custom, sinon localhost.
+  // Une fois le serveur déployé, l'URL peut être changée via le menu.
+  // ===========================================================
+  // Si la page est servie par le serveur Railway, on connecte au même host. Sinon fallback Railway.
+  const DEFAULT_SERVER_URL = (function() {
+    if (location.protocol === 'https:') return 'wss://' + location.host;
+    if (location.protocol === 'http:' && location.host && location.hostname !== '') return 'ws://' + location.host;
+    return 'wss://moto-race-server-production.up.railway.app';
+  })();
+
+  const ServerConn = {
+    ws: null,
+    connected: false,
+    myId: null,
+    pseudo: null,
+    listeners: {},
+
+    getUrl() {
+      return localStorage.getItem('serverUrl') || DEFAULT_SERVER_URL;
+    },
+    setUrl(url) {
+      localStorage.setItem('serverUrl', url);
+    },
+
+    on(event, cb) {
+      if (!this.listeners[event]) this.listeners[event] = [];
+      this.listeners[event].push(cb);
+    },
+    off(event, cb) {
+      if (!this.listeners[event]) return;
+      this.listeners[event] = this.listeners[event].filter(f => f !== cb);
+    },
+    emit(event, data) {
+      (this.listeners[event] || []).forEach(cb => {
+        try { cb(data); } catch (e) { console.warn(e); }
+      });
+    },
+
+    connect(pseudo, room = 'main') {
+      this.pseudo = pseudo;
+      return new Promise((resolve, reject) => {
+        try {
+          this.ws = new WebSocket(this.getUrl());
+        } catch (e) { reject(e); return; }
+
+        const timeout = setTimeout(() => {
+          if (!this.connected) {
+            try { this.ws.close(); } catch (e) {}
+            reject(new Error('timeout'));
+          }
+        }, 8000);
+
+        this.ws.onopen = () => {
+          this.connected = true;
+          this.ws.send(JSON.stringify({ type: 'join', pseudo, room }));
+        };
+        this.ws.onmessage = (evt) => {
+          let msg;
+          try { msg = JSON.parse(evt.data); } catch (e) { return; }
+          if (msg.type === 'joined') {
+            this.myId = msg.myId;
+            clearTimeout(timeout);
+            this.emit('joined', msg);
+            resolve(msg);
+          } else {
+            this.emit(msg.type, msg);
+          }
+        };
+        this.ws.onclose = () => {
+          this.connected = false;
+          this.emit('close');
+        };
+        this.ws.onerror = (err) => {
+          clearTimeout(timeout);
+          this.emit('error', err);
+          if (!this.connected) reject(err);
+        };
+      });
+    },
+
+    send(msg) {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        try { this.ws.send(JSON.stringify(msg)); } catch (e) {}
+      }
+    },
+
+    disconnect() {
+      this.connected = false;
+      this.myId = null;
+      this.listeners = {};
+      if (this.ws) {
+        try { this.ws.close(); } catch (e) {}
+        this.ws = null;
+      }
+    }
+  };
+
+  // ===========================================================
+  // PROFIL JOUEUR (pseudo + best times locaux)
+  // ===========================================================
+  const Player = {
+    getName() { return localStorage.getItem('playerName'); },
+    setName(name) { localStorage.setItem('playerName', name); },
+    getBest(level) {
+      const v = localStorage.getItem(`bestTime_${level}`);
+      return v ? parseFloat(v) : null;
+    },
+    setBest(level, time) {
+      localStorage.setItem(`bestTime_${level}`, time.toFixed(2));
+    }
+  };
+
+  function showPseudoOverlay(onDone) {
+    const overlay = document.getElementById('peerOverlay');
+    overlay.style.display = 'block';
+    const current = Player.getName() || '';
+    overlay.innerHTML = `
+      <h2>Ton pseudo</h2>
+      <p>Comment tu veux qu'on t'appelle dans le leaderboard ?</p>
+      <input type="text" id="pseudoInput" maxlength="14" placeholder="ton nom" value="${current}" />
+      <div style="margin-top:8px"><button id="pseudoOk">Valider</button></div>
+    `;
+    const input = document.getElementById('pseudoInput');
+    input.focus();
+    input.select();
+    const submit = () => {
+      const name = input.value.trim().slice(0, 14);
+      if (name) {
+        Player.setName(name);
+        overlay.style.display = 'none';
+        if (onDone) onDone(name);
+      }
+    };
+    document.getElementById('pseudoOk').onclick = submit;
+    input.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
+  }
+
+  // ===========================================================
+  // SCÈNE MENU
+  // ===========================================================
+  class MenuScene extends Phaser.Scene {
+    constructor() { super('Menu'); }
+
+    create() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.cameras.main.setBackgroundColor('#1a2030');
+
+      // Titre stylé
+      this.add.text(w/2, h/2 - 180, 'MOTO RACE', {
+        font: 'bold 72px sans-serif',
+        color: '#ff5533',
+        stroke: '#000', strokeThickness: 6
+      }).setOrigin(0.5);
+
+      this.add.text(w/2, h/2 - 120, 'pilote · saute · enchaîne les flips', {
+        font: '16px sans-serif',
+        color: '#aaaaaa'
+      }).setOrigin(0.5);
+
+      // Petite moto déco
+      this.drawDecoBike(w/2, h/2 - 50);
+
+      // Boutons
+      this.makeButton(w/2, h/2 + 30, 'SOLO', () => this.scene.start('GameSetup'));
+      this.makeButton(w/2, h/2 + 85, '🌍 SALON EN LIGNE', () => this.scene.start('ServerRoom'));
+      this.makeButton(w/2, h/2 + 140, 'MULTI 1V1 (P2P)', () => this.scene.start('Multi'));
+      this.makeButton(w/2, h/2 + 195, 'COMMANDES', () => this.scene.start('Help'));
+
+      this.add.text(w/2, h - 30, 'fait avec Phaser 3 + Matter.js + WebRTC', {
+        font: '11px sans-serif',
+        color: '#666'
+      }).setOrigin(0.5);
+
+      // Démarre l'audio à la première interaction (requis par les navigateurs)
+      this.input.once('pointerdown', () => {
+        if (window.audio) {
+          window.audio.resume();
+          window.audio.startMusic();
+        }
+      });
+
+      // Bouton mute (coin bas droit)
+      this.makeMuteButton();
+
+      // Pseudo : demande au premier lancement, sinon affiche
+      if (!Player.getName()) {
+        showPseudoOverlay(() => this.refreshPseudo());
+      }
+      this.refreshPseudo();
+    }
+
+    refreshPseudo() {
+      if (this.pseudoLabel) this.pseudoLabel.destroy();
+      if (this.pseudoBtn) this.pseudoBtn.destroy();
+      const name = Player.getName();
+      if (!name) return;
+      this.pseudoLabel = this.add.text(20, 24, '👤 ' + name, {
+        font: 'bold 16px sans-serif',
+        color: '#ffdd44',
+        backgroundColor: '#222',
+        padding: { x: 10, y: 6 }
+      });
+      this.pseudoBtn = this.add.text(this.pseudoLabel.x + this.pseudoLabel.width + 8, 24, 'changer', {
+        font: '13px sans-serif',
+        color: '#aaa',
+        backgroundColor: '#333',
+        padding: { x: 8, y: 7 }
+      }).setInteractive({ useHandCursor: true });
+      this.pseudoBtn.on('pointerdown', () => showPseudoOverlay(() => this.refreshPseudo()));
+    }
+
+    makeMuteButton() {
+      const w = this.scale.width;
+      const isMuted = window.audio && window.audio.muted;
+      const txt = this.add.text(w - 24, 24, isMuted ? '🔇' : '🔊', {
+        font: '22px sans-serif',
+        backgroundColor: '#222',
+        padding: { x: 8, y: 4 }
+      }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+      txt.on('pointerdown', () => {
+        if (!window.audio) return;
+        const muted = window.audio.toggleMute();
+        txt.setText(muted ? '🔇' : '🔊');
+      });
+    }
+
+    drawDecoBike(cx, cy) {
+      const g = this.add.graphics();
+      // roues
+      g.fillStyle(0x111111);
+      g.fillCircle(cx - 30, cy + 10, 14);
+      g.fillCircle(cx + 30, cy + 10, 14);
+      g.lineStyle(2, 0x666666);
+      g.strokeCircle(cx - 30, cy + 10, 14);
+      g.strokeCircle(cx + 30, cy + 10, 14);
+      // chassis
+      g.fillStyle(0xff5533);
+      g.fillRect(cx - 35, cy, 70, 14);
+      g.lineStyle(2, 0x000000);
+      g.strokeRect(cx - 35, cy, 70, 14);
+      // pilote
+      g.fillStyle(0x333366);
+      g.fillRect(cx - 7, cy - 18, 14, 18);
+      g.fillStyle(0xffaa44);
+      g.fillCircle(cx, cy - 26, 8);
+    }
+
+    makeButton(x, y, text, onClick) {
+      const btn = this.add.text(x, y, text, {
+        font: 'bold 22px sans-serif',
+        color: '#ffffff',
+        backgroundColor: '#ff5533',
+        padding: { x: 24, y: 10 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#ff7755' }));
+      btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#ff5533' }));
+      btn.on('pointerdown', onClick);
+      return btn;
+    }
+  }
+
+  // ===========================================================
+  // SCÈNE AIDE
+  // ===========================================================
+  class HelpScene extends Phaser.Scene {
+    constructor() { super('Help'); }
+    create() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.cameras.main.setBackgroundColor('#1a2030');
+
+      this.add.text(w/2, 80, 'COMMANDES', {
+        font: 'bold 40px sans-serif', color: '#ff5533',
+        stroke: '#000', strokeThickness: 4
+      }).setOrigin(0.5);
+
+      const lines = [
+        ['→', 'accélérer'],
+        ['←', 'freiner / reculer'],
+        ['↑', 'pencher en arrière (BACKFLIP en l\'air)'],
+        ['↓', 'pencher en avant'],
+        ['', ''],
+        ['R', 'recommencer la course'],
+        ['ÉCHAP', 'retour menu'],
+        ['', ''],
+        ['', 'BACKFLIP réussi → -2s sur ton temps'],
+        ['', 'FRONTFLIP réussi → -1s sur ton temps'],
+        ['', 'Le châssis touche le sol → CRASH']
+      ];
+
+      lines.forEach((line, i) => {
+        const y = 170 + i * 32;
+        if (line[0]) {
+          this.add.text(w/2 - 200, y, line[0], {
+            font: 'bold 20px monospace', color: '#ffdd44'
+          }).setOrigin(0.5);
+        }
+        this.add.text(w/2 - 160, y, line[1], {
+          font: '18px sans-serif', color: '#ffffff'
+        }).setOrigin(0, 0.5);
+      });
+
+      const back = this.add.text(w/2, h - 60, '← RETOUR', {
+        font: 'bold 20px sans-serif',
+        color: '#ffffff', backgroundColor: '#444',
+        padding: { x: 18, y: 10 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      back.on('pointerdown', () => this.scene.start('Menu'));
+      back.on('pointerover', () => back.setStyle({ backgroundColor: '#666' }));
+      back.on('pointerout', () => back.setStyle({ backgroundColor: '#444' }));
+    }
+  }
+
+  // ===========================================================
+  // SCÈNE SÉLECTION DE NIVEAU
+  // ===========================================================
+  class GameSetupScene extends Phaser.Scene {
+    constructor() { super('GameSetup'); }
+
+    init(data) {
+      this.multiMode = data.multiMode || false;
+      this.conn = data.conn || null;
+      this.peer = data.peer || null;
+      this.peerPseudo = data.peerPseudo || null;
+    }
+
+    create() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.cameras.main.setBackgroundColor('#1a2030');
+
+      // Sélection courante
+      this.selectedMaps = [];
+      this.duration = 300; // 5 min par défaut
+
+      // Titre
+      this.add.text(w / 2, 50, 'CONFIGURATION', {
+        font: 'bold 40px sans-serif',
+        color: '#ff5533',
+        stroke: '#000', strokeThickness: 4
+      }).setOrigin(0.5);
+
+      const subtitle = this.multiMode
+        ? '⚔️  MODE MULTI — choisis les maps puis lance la partie'
+        : 'Choisis 1 à 3 maps · BO1 / BO2 / BO3';
+      this.add.text(w / 2, 90, subtitle, {
+        font: '15px sans-serif',
+        color: '#aaaaaa'
+      }).setOrigin(0.5);
+
+      // Grid de maps : 4 colonnes x 2 lignes pour 8 maps
+      const cols = 4;
+      const cardW = Math.min(220, (w - 100) / cols - 14);
+      const cardH = 92;
+      const gap = 14;
+      const totalW = cols * cardW + (cols - 1) * gap;
+      const startX = (w - totalW) / 2;
+      const startY = 130;
+
+      this.mapCards = [];
+      LEVELS.forEach((level, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const x = startX + col * (cardW + gap);
+        const y = startY + row * (cardH + gap);
+        this.mapCards.push(this.makeMapCard(x, y, cardW, cardH, level, i));
+      });
+
+      // === Section durée ===
+      const durY = startY + 2 * (cardH + gap) + 20;
+      this.add.text(w / 2, durY, 'DURÉE PAR MAP', {
+        font: 'bold 14px sans-serif',
+        color: '#ffaa66'
+      }).setOrigin(0.5);
+
+      this.durationButtons = [];
+      const durOptions = [
+        { label: '1 min', val: 60 },
+        { label: '3 min', val: 180 },
+        { label: '5 min', val: 300 }
+      ];
+      durOptions.forEach((opt, idx) => {
+        const x = w / 2 + (idx - 1) * 130;
+        const btn = this.add.text(x, durY + 36, opt.label, {
+          font: 'bold 18px sans-serif',
+          color: '#aaa',
+          backgroundColor: '#222a3a',
+          padding: { x: 24, y: 10 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        btn.on('pointerdown', () => {
+          this.duration = opt.val;
+          this.refreshUI();
+        });
+        this.durationButtons.push({ btn, val: opt.val });
+      });
+
+      // Compteur sélection
+      this.counterText = this.add.text(w / 2, durY + 90, '0 / 3 maps sélectionnées', {
+        font: 'bold 14px sans-serif',
+        color: '#aaaaaa'
+      }).setOrigin(0.5);
+
+      // Bouton GO
+      this.goBtn = this.add.text(w / 2, h - 70, 'LANCER',  {
+        font: 'bold 26px sans-serif',
+        color: '#777',
+        backgroundColor: '#333',
+        padding: { x: 36, y: 16 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      this.goBtn.on('pointerdown', () => this.startGame());
+
+      // Bouton retour menu
+      const back = this.add.text(20, 20, '← Menu', {
+        font: 'bold 14px sans-serif',
+        color: '#aaa',
+        backgroundColor: '#333',
+        padding: { x: 14, y: 8 }
+      }).setInteractive({ useHandCursor: true });
+      back.on('pointerdown', () => {
+        if (this.multiMode && this.peer) { try { this.peer.destroy(); } catch (e) {} }
+        this.scene.start('Menu');
+      });
+
+      // Pseudo en haut à droite
+      const pseudo = Player.getName();
+      if (pseudo) {
+        this.add.text(w - 20, 24, '👤 ' + pseudo, {
+          font: 'bold 14px sans-serif',
+          color: '#ffdd44',
+          backgroundColor: '#222a3a',
+          padding: { x: 12, y: 6 }
+        }).setOrigin(1, 0);
+      }
+
+      this.refreshUI();
+    }
+
+    makeMapCard(x, y, cw, ch, level, mapIndex) {
+      const container = this.add.container(x, y);
+      const bg = this.add.graphics();
+      container.add(bg);
+
+      const text = this.add.text(cw / 2, ch / 2 - 8, level.name, {
+        font: 'bold 13px sans-serif',
+        color: '#ffffff',
+        align: 'center',
+        wordWrap: { width: cw - 16 }
+      }).setOrigin(0.5);
+      container.add(text);
+
+      const orderBadge = this.add.text(8, 6, '', {
+        font: 'bold 18px sans-serif',
+        color: '#ffdd44'
+      });
+      container.add(orderBadge);
+
+      const best = Player.getBest(mapIndex);
+      if (best !== null) {
+        const bestText = this.add.text(cw / 2, ch / 2 + 22, '★ ' + best.toFixed(2) + 's', {
+          font: 'bold 11px monospace',
+          color: '#ffaa66'
+        }).setOrigin(0.5);
+        container.add(bestText);
+      }
+
+      const hit = new Phaser.Geom.Rectangle(0, 0, cw, ch);
+      container.setSize(cw, ch);
+      container.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
+      container.on('pointerdown', () => this.toggleMap(mapIndex));
+      container.on('pointerover', () => container.setAlpha(0.85));
+      container.on('pointerout', () => container.setAlpha(1));
+
+      return { container, bg, orderBadge, mapIndex, w: cw, h: ch };
+    }
+
+    toggleMap(mapIndex) {
+      const idx = this.selectedMaps.indexOf(mapIndex);
+      if (idx >= 0) {
+        this.selectedMaps.splice(idx, 1);
+      } else {
+        if (this.selectedMaps.length >= 3) return;
+        this.selectedMaps.push(mapIndex);
+      }
+      this.refreshUI();
+    }
+
+    refreshUI() {
+      // Cartes maps
+      this.mapCards.forEach(card => {
+        const order = this.selectedMaps.indexOf(card.mapIndex);
+        card.bg.clear();
+        if (order >= 0) {
+          card.bg.fillStyle(0xff5533, 0.85);
+          card.bg.fillRoundedRect(0, 0, card.w, card.h, 10);
+          card.bg.lineStyle(2, 0xffdd44, 1);
+          card.bg.strokeRoundedRect(0, 0, card.w, card.h, 10);
+          card.orderBadge.setText('#' + (order + 1));
+        } else {
+          card.bg.fillStyle(0x222a3a, 0.9);
+          card.bg.fillRoundedRect(0, 0, card.w, card.h, 10);
+          card.bg.lineStyle(1, 0x444a5a, 1);
+          card.bg.strokeRoundedRect(0, 0, card.w, card.h, 10);
+          card.orderBadge.setText('');
+        }
+      });
+
+      // Boutons durée
+      this.durationButtons.forEach(({ btn, val }) => {
+        if (val === this.duration) {
+          btn.setStyle({ backgroundColor: '#ff5533', color: '#fff' });
+        } else {
+          btn.setStyle({ backgroundColor: '#222a3a', color: '#aaa' });
+        }
+      });
+
+      // Compteur
+      const n = this.selectedMaps.length;
+      const bo = n === 0 ? '—' : (n === 1 ? 'BO1 (1 map)' : (n === 2 ? 'BO2 (2 maps)' : 'BO3 (3 maps)'));
+      this.counterText.setText(`${n} / 3 maps · ${bo}`);
+
+      // GO button
+      if (n === 0) {
+        this.goBtn.setStyle({ backgroundColor: '#333', color: '#777' });
+      } else {
+        this.goBtn.setStyle({ backgroundColor: '#ff5533', color: '#ffffff' });
+      }
+    }
+
+    startGame() {
+      if (this.selectedMaps.length === 0) return;
+
+      const sharedData = {
+        level: this.selectedMaps[0],
+        mapSequence: [...this.selectedMaps],
+        durationPerMap: this.duration,
+        currentMapIdx: 0,
+        results: []
+      };
+
+      if (this.multiMode) {
+        const challengeEndAt = Date.now() + 3000 + this.duration * 1000;
+        try {
+          this.conn.send({
+            type: 'start',
+            mapSequence: this.selectedMaps,
+            durationPerMap: this.duration,
+            currentMapIdx: 0,
+            pseudo: Player.getName() || '?',
+            challengeEndAt
+          });
+        } catch (e) {}
+        this.scene.start('Game', {
+          ...sharedData,
+          mode: 'multi-host',
+          conn: this.conn,
+          peer: this.peer,
+          challengeEndAt,
+          peerPseudo: this.peerPseudo
+        });
+      } else {
+        this.scene.start('Game', {
+          ...sharedData,
+          mode: 'solo'
+        });
+      }
+    }
+  }
+
+  // ===========================================================
+  // SCÈNE MULTI (lobby WebRTC)
+  // ===========================================================
+  class MultiScene extends Phaser.Scene {
+    constructor() { super('Multi'); }
+
+    create() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.cameras.main.setBackgroundColor('#1a2030');
+
+      this.add.text(w/2, 80, 'MULTI EN LIGNE', {
+        font: 'bold 40px sans-serif', color: '#ff5533',
+        stroke: '#000', strokeThickness: 4
+      }).setOrigin(0.5);
+
+      this.add.text(w/2, 130, 'fais la course contre tes potes — pas de serveur, juste un lien à partager', {
+        font: '14px sans-serif', color: '#aaaaaa'
+      }).setOrigin(0.5);
+
+      this.peer = null;
+      this.conn = null;
+      this.isHost = false;
+      this.myId = null;
+
+      this.showOverlay('start');
+
+      const back = this.add.text(w/2, h - 60, '← MENU', {
+        font: 'bold 18px sans-serif',
+        color: '#ffffff', backgroundColor: '#444',
+        padding: { x: 16, y: 8 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      back.on('pointerdown', () => {
+        this.cleanup();
+        this.scene.start('Menu');
+      });
+
+      this.events.on('shutdown', () => this.cleanupOverlay());
+    }
+
+    cleanup() {
+      this.cleanupOverlay();
+      if (this.peer && !this.peer.destroyed) {
+        try { this.peer.destroy(); } catch (e) {}
+      }
+      this.peer = null;
+      this.conn = null;
+    }
+
+    cleanupOverlay() {
+      const overlay = document.getElementById('peerOverlay');
+      overlay.style.display = 'none';
+      overlay.innerHTML = '';
+    }
+
+    showOverlay(state) {
+      const overlay = document.getElementById('peerOverlay');
+      overlay.style.display = 'block';
+
+      if (state === 'start') {
+        overlay.innerHTML = `
+          <h2>Multi en ligne</h2>
+          <p>Crée une partie et envoie le code à ton pote, ou rejoins-le avec son code.</p>
+          <div style="margin-top:18px">
+            <button id="hostBtn">Créer une partie</button>
+            <button id="joinBtn" class="secondary">Rejoindre</button>
+          </div>
+        `;
+        document.getElementById('hostBtn').onclick = () => this.startHost();
+        document.getElementById('joinBtn').onclick = () => this.showOverlay('join');
+
+      } else if (state === 'host-init') {
+        overlay.innerHTML = `
+          <h2>Création de la partie...</h2>
+          <p class="status">connexion au réseau pair-à-pair</p>
+        `;
+
+      } else if (state === 'host-waiting') {
+        overlay.innerHTML = `
+          <h2>Code de la partie</h2>
+          <p>Envoie ce code à ton pote :</p>
+          <div class="id-display">${this.myId}</div>
+          <button class="copy-btn" id="copyBtn">Copier le code</button>
+          <p class="status">en attente du pote...</p>
+          <button class="secondary" id="cancelBtn">Annuler</button>
+        `;
+        document.getElementById('copyBtn').onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(this.myId);
+            document.getElementById('copyBtn').textContent = 'Copié !';
+          } catch (e) {}
+        };
+        document.getElementById('cancelBtn').onclick = () => {
+          this.cleanup();
+          this.scene.start('Menu');
+        };
+
+      } else if (state === 'join') {
+        overlay.innerHTML = `
+          <h2>Rejoindre une partie</h2>
+          <p>Colle le code reçu :</p>
+          <input type="text" id="remoteId" placeholder="code du pote" autocomplete="off" />
+          <div style="margin-top:8px">
+            <button id="connectBtn">Se connecter</button>
+            <button class="secondary" id="backBtn">Retour</button>
+          </div>
+          <p class="status" id="joinStatus"></p>
+        `;
+        const input = document.getElementById('remoteId');
+        input.focus();
+        const connect = () => {
+          const id = input.value.trim();
+          if (id) this.startJoin(id);
+        };
+        document.getElementById('connectBtn').onclick = connect;
+        input.onkeydown = (e) => { if (e.key === 'Enter') connect(); };
+        document.getElementById('backBtn').onclick = () => this.showOverlay('start');
+
+      } else if (state === 'connecting') {
+        overlay.innerHTML = `
+          <h2>Connexion...</h2>
+          <p class="status" id="status">connexion au pote en cours</p>
+        `;
+
+      } else if (state === 'connected') {
+        const role = this.isHost ? 'Tu es l\'hôte' : 'Connecté à l\'hôte';
+        overlay.innerHTML = `
+          <h2>Connecté !</h2>
+          <p>${role}.</p>
+          ${this.isHost ? `
+            <p>Configure la partie : choisis 1 à 3 maps + la durée par map.</p>
+            <div style="margin-top:14px"><button id="goSetupBtn">Configurer la partie</button></div>
+          ` : '<p class="status">⏳ en attente que l\'hôte configure la partie...</p>'}
+        `;
+        if (this.isHost) {
+          document.getElementById('goSetupBtn').onclick = () => {
+            this.cleanupOverlay();
+            this.scene.start('GameSetup', {
+              multiMode: true,
+              conn: this.conn,
+              peer: this.peer,
+              peerPseudo: null
+            });
+          };
+        }
+      }
+    }
+
+    setStatus(text, isError) {
+      const el = document.querySelector('#peerOverlay .status') || document.getElementById('status') || document.getElementById('joinStatus');
+      if (el) {
+        el.textContent = text;
+        el.classList.toggle('error', !!isError);
+      }
+    }
+
+    startHost() {
+      this.isHost = true;
+      this.showOverlay('host-init');
+      this.peer = new Peer();
+
+      this.peer.on('open', (id) => {
+        this.myId = id;
+        this.showOverlay('host-waiting');
+      });
+
+      this.peer.on('connection', (conn) => {
+        this.conn = conn;
+        conn.on('open', () => {
+          this.showOverlay('connected');
+        });
+        conn.on('data', (data) => this.handleData(data));
+        conn.on('close', () => this.setStatus('Pote déconnecté', true));
+      });
+
+      this.peer.on('error', (err) => {
+        this.setStatus('Erreur : ' + err.type, true);
+      });
+    }
+
+    startJoin(remoteId) {
+      this.isHost = false;
+      this.showOverlay('connecting');
+      this.peer = new Peer();
+
+      this.peer.on('open', () => {
+        this.conn = this.peer.connect(remoteId, { reliable: true });
+        this.conn.on('open', () => {
+          this.showOverlay('connected');
+        });
+        this.conn.on('data', (data) => this.handleData(data));
+        this.conn.on('error', (err) => this.setStatus('Erreur : ' + err, true));
+        this.conn.on('close', () => this.setStatus('Connexion fermée', true));
+
+        // timeout si on n'arrive pas à se connecter
+        setTimeout(() => {
+          if (this.conn && !this.conn.open) {
+            this.setStatus('Connexion impossible — vérifie le code', true);
+          }
+        }, 8000);
+      });
+
+      this.peer.on('error', (err) => {
+        this.setStatus('Erreur : ' + err.type, true);
+      });
+    }
+
+    handleData(data) {
+      if (data.type === 'start') {
+        const seq = data.mapSequence || [data.level];
+        this.startRace({
+          level: seq[0],
+          mapSequence: seq,
+          durationPerMap: data.durationPerMap || 300,
+          currentMapIdx: data.currentMapIdx || 0,
+          challengeEndAt: data.challengeEndAt,
+          peerPseudo: data.pseudo
+        });
+      }
+    }
+
+    startRace(opts) {
+      this.cleanupOverlay();
+      this.scene.start('Game', {
+        level: opts.level,
+        mode: this.isHost ? 'multi-host' : 'multi-join',
+        conn: this.conn,
+        peer: this.peer,
+        challengeEndAt: opts.challengeEndAt,
+        peerPseudo: opts.peerPseudo,
+        mapSequence: opts.mapSequence,
+        durationPerMap: opts.durationPerMap,
+        currentMapIdx: opts.currentMapIdx,
+        results: []
+      });
+    }
+  }
+
+  // ===========================================================
+  // SCÈNE SALON SERVEUR (connexion + lobby + lancement)
+  // ===========================================================
+  class ServerRoomScene extends Phaser.Scene {
+    constructor() { super('ServerRoom'); }
+
+    create() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.cameras.main.setBackgroundColor('#1a2030');
+
+      this.add.text(w / 2, 70, '🌍  SALON EN LIGNE', {
+        font: 'bold 38px sans-serif',
+        color: '#ff5533',
+        stroke: '#000', strokeThickness: 4
+      }).setOrigin(0.5);
+
+      this.add.text(w / 2, 110, 'rotation auto des maps · 5 min par map · entre / sors quand tu veux', {
+        font: '14px sans-serif',
+        color: '#aaa'
+      }).setOrigin(0.5);
+
+      // Pseudo en haut à droite
+      const pseudo = Player.getName();
+      if (pseudo) {
+        this.add.text(w - 20, 24, '👤 ' + pseudo, {
+          font: 'bold 14px sans-serif',
+          color: '#ffdd44',
+          backgroundColor: '#222a3a',
+          padding: { x: 12, y: 6 }
+        }).setOrigin(1, 0);
+      }
+
+      // Bouton retour menu
+      const back = this.add.text(20, 20, '← Menu', {
+        font: 'bold 14px sans-serif',
+        color: '#aaa',
+        backgroundColor: '#333',
+        padding: { x: 14, y: 8 }
+      }).setInteractive({ useHandCursor: true });
+      back.on('pointerdown', () => {
+        ServerConn.disconnect();
+        this.scene.start('Menu');
+      });
+
+      // URL serveur
+      const currentUrl = ServerConn.getUrl();
+      this.add.text(w / 2, h - 110, 'serveur : ' + currentUrl, {
+        font: '11px monospace',
+        color: '#666'
+      }).setOrigin(0.5);
+
+      const editUrl = this.add.text(w / 2, h - 88, 'changer l\'URL du serveur', {
+        font: '11px sans-serif',
+        color: '#888',
+        backgroundColor: '#222a3a',
+        padding: { x: 8, y: 4 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      editUrl.on('pointerdown', () => this.promptUrl());
+
+      this.statusText = this.add.text(w / 2, h / 2, 'connexion au serveur...', {
+        font: 'bold 22px sans-serif',
+        color: '#fff'
+      }).setOrigin(0.5);
+
+      this.detailText = this.add.text(w / 2, h / 2 + 40, '', {
+        font: '14px sans-serif',
+        color: '#aaa'
+      }).setOrigin(0.5);
+
+      // Connexion
+      if (!Player.getName()) {
+        this.statusText.setText('définis ton pseudo d\'abord');
+        showPseudoOverlay(() => this.tryConnect());
+      } else {
+        this.tryConnect();
+      }
+    }
+
+    tryConnect() {
+      const pseudo = Player.getName() || 'anonyme';
+      this.statusText.setText('connexion à ' + ServerConn.getUrl() + ' ...');
+      this.detailText.setText('');
+      ServerConn.connect(pseudo, 'main')
+        .then((state) => this.onJoined(state))
+        .catch((err) => {
+          this.statusText.setText('❌ connexion échouée');
+          this.detailText.setText(
+            'serveur indisponible. Vérifie que le serveur tourne ' +
+            '(node server.js) ou que l\'URL est correcte.\n' +
+            (err && err.message ? err.message : '')
+          );
+          // Retry button
+          if (!this.retryBtn) {
+            this.retryBtn = this.add.text(this.scale.width / 2, this.scale.height / 2 + 110, 'Réessayer', {
+              font: 'bold 18px sans-serif',
+              color: '#fff',
+              backgroundColor: '#ff5533',
+              padding: { x: 22, y: 10 }
+            }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+            this.retryBtn.on('pointerdown', () => {
+              this.retryBtn.destroy();
+              this.retryBtn = null;
+              this.tryConnect();
+            });
+          }
+        });
+    }
+
+    onJoined(state) {
+      // On lance directement GameScene en mode 'server'.
+      // GameScene gère l'écoute des events serveur.
+      this.scene.start('Game', {
+        level: state.currentMapIdx,
+        mode: 'server',
+        currentMapIdx: state.currentMapIdx,
+        mapStartedAt: state.mapStartedAt,
+        mapDuration: state.mapDuration,
+        inTransition: state.inTransition,
+        transitionEndsAt: state.transitionEndsAt,
+        existingPlayers: state.players || []
+      });
+    }
+
+    promptUrl() {
+      const overlay = document.getElementById('peerOverlay');
+      overlay.style.display = 'block';
+      const cur = ServerConn.getUrl();
+      overlay.innerHTML = `
+        <h2>URL du serveur</h2>
+        <p>Saisis l'URL de ton serveur Moto Race (WebSocket).</p>
+        <input type="text" id="urlInput" placeholder="ws://localhost:3000" value="${cur}" />
+        <p style="font-size:11px;opacity:0.7">Local : <code>ws://localhost:3000</code><br>Déployé : <code>wss://ton-app.up.railway.app</code> (https → wss)</p>
+        <div style="margin-top:8px">
+          <button id="urlOk">Valider</button>
+          <button class="secondary" id="urlCancel">Annuler</button>
+        </div>
+      `;
+      const input = document.getElementById('urlInput');
+      input.focus();
+      input.select();
+      document.getElementById('urlOk').onclick = () => {
+        const v = input.value.trim();
+        if (v) {
+          ServerConn.setUrl(v);
+          overlay.style.display = 'none';
+          this.scene.restart();
+        }
+      };
+      document.getElementById('urlCancel').onclick = () => {
+        overlay.style.display = 'none';
+      };
+    }
+  }
+
+  // ===========================================================
+  // SCÈNE JEU (la course)
+  // ===========================================================
+  class GameScene extends Phaser.Scene {
+    constructor() { super('Game'); }
+
+    init(data) {
+      this.levelIndex = data.level || 0;
+      this.mode = data.mode || 'solo';
+      this.conn = data.conn || null;
+      this.peer = data.peer || null;
+      // État du challenge (préservé entre restarts d'une même map)
+      this.challengeEndTime = data.challengeEndTime || null;
+      this.sessionBestTime = data.sessionBestTime !== undefined ? data.sessionBestTime : null;
+      this.runCount = data.runCount || 1;
+      this.cachedTop = data.cachedTop || null;
+      // Multi P2P : timestamp absolu (Date.now) pour synchroniser les 2 joueurs
+      this.challengeEndAt = data.challengeEndAt || null;
+      this.peerPseudo = data.peerPseudo || null;
+      this.peerSessionBest = data.peerSessionBest !== undefined ? data.peerSessionBest : null;
+      // Séquence de maps (BO1/BO2/BO3)
+      this.mapSequence = data.mapSequence || [this.levelIndex];
+      this.durationPerMap = data.durationPerMap || 300;
+      this.currentMapIdx = data.currentMapIdx !== undefined ? data.currentMapIdx : 0;
+      this.results = data.results || [];
+      // Mode SERVEUR : état partagé via WebSocket
+      this.serverState = (data.mode === 'server') ? {
+        mapStartedAt: data.mapStartedAt || Date.now(),
+        mapDuration: data.mapDuration || 5 * 60 * 1000,
+        inTransition: data.inTransition || false,
+        transitionEndsAt: data.transitionEndsAt || null,
+        existingPlayers: data.existingPlayers || []
+      } : null;
+    }
+
+    create() {
+      const level = LEVELS[this.levelIndex];
+
+      // Ciel
+      this.cameras.main.setBackgroundColor('#87CEEB');
+
+      // Décor d'arrière-plan parallaxé
+      this.drawBackground();
+
+      // Terrain (physique + visuel)
+      this.terrainGfx = this.add.graphics();
+      this.buildTerrain(level.terrain);
+
+      // Obstacles
+      this.obstaclesGfx = this.add.graphics();
+      level.obstacles.forEach(o => this.addObstacle(o));
+
+      // Ligne d'arrivée
+      this.finishX = level.finishX;
+      this.addFinishLine(level);
+
+      // Moto du joueur
+      const startX = 100;
+      const startY = level.bikeStartY;
+      this.bike = this.createBike(startX, startY);
+      this.bikeGfx = this.add.graphics();
+
+      // Ghost adverse en multi P2P (1v1)
+      if (this.conn) {
+        this.ghostState = { x: startX, y: startY, a: 0, wba: 0, wfa: 0, finished: false, crashed: false };
+        this.ghostGfx = this.add.graphics();
+        this.opponentFinishTime = null;
+      }
+
+      // Mode SERVEUR : plusieurs ghosts (un par joueur connecté)
+      if (this.mode === 'server') {
+        this.ghosts = new Map(); // id → { x, y, a, wba, wfa, pseudo, sessionBest, finished, crashed }
+        this.ghostsGfx = this.add.graphics();
+        // Initialise avec la liste des joueurs déjà présents
+        if (this.serverState && this.serverState.existingPlayers) {
+          for (const p of this.serverState.existingPlayers) {
+            this.ghosts.set(p.id, {
+              x: startX, y: startY, a: 0, wba: 0, wfa: 0,
+              pseudo: p.pseudo, sessionBest: p.sessionBest,
+              finished: false, crashed: false
+            });
+          }
+        }
+      }
+
+      // Caméra qui suit la moto
+      this.followTarget = this.add.zone(startX, startY, 1, 1);
+      this.cameras.main.setBounds(-300, -1000, level.finishX + 700, 2200);
+      this.cameras.main.startFollow(this.followTarget, false, 0.12, 0.1);
+
+      // Inputs (flèches + ZQSD + WASD)
+      this.cursors = this.input.keyboard.createCursorKeys();
+      this.keyW = this.input.keyboard.addKey('W');
+      this.keyA = this.input.keyboard.addKey('A');
+      this.keyS = this.input.keyboard.addKey('S');
+      this.keyD = this.input.keyboard.addKey('D');
+      this.keyZ = this.input.keyboard.addKey('Z');
+      this.keyQ = this.input.keyboard.addKey('Q');
+      this.input.keyboard.on('keydown-R', () => {
+        this.scene.restart();
+      });
+      this.input.keyboard.on('keydown-ESC', () => {
+        this.cleanup();
+        this.scene.start('Menu');
+      });
+      // Force le focus sur le canvas (sinon les flèches peuvent partir ailleurs)
+      this.game.canvas.tabIndex = 1;
+      this.game.canvas.focus();
+      this.input.on('pointerdown', () => this.game.canvas.focus());
+
+      // État de la course
+      this.startTime = null;
+      this.elapsed = 0;
+      this.flipBonus = 0;
+      this.finished = false;
+      this.crashed = false;
+      this.contactCount = 0;
+      this.lastAngle = 0;
+      this.cumulativeRotation = 0;
+      this.flipMessages = [];
+      this.countdownStart = this.time.now;
+
+      // === MODE CHALLENGE (solo + multi P2P + serveur) ===
+      this.challengeMode = this.mode === 'solo' || this.mode === 'multi-host' || this.mode === 'multi-join' || this.mode === 'server';
+      this.CHALLENGE_DURATION = this.durationPerMap; // 60 / 180 / 300 sec selon config
+
+      // Mode serveur : durée vient du serveur
+      if (this.mode === 'server' && this.serverState) {
+        this.CHALLENGE_DURATION = this.serverState.mapDuration / 1000;
+      }
+      this.challengeEnded = false;
+
+      // En multi P2P : convertir le timestamp Date.now() partagé en this.time.now local
+      if (this.challengeEndAt && this.challengeEndTime === null) {
+        const offset = this.challengeEndAt - Date.now();
+        this.challengeEndTime = this.time.now + offset;
+      }
+
+      // Mode serveur : timer basé sur l'état envoyé par le serveur
+      if (this.mode === 'server' && this.serverState && this.challengeEndTime === null) {
+        const remainingMs = (this.serverState.mapStartedAt + this.serverState.mapDuration) - Date.now();
+        this.challengeEndTime = this.time.now + remainingMs;
+      }
+
+      // ====================== HUD ======================
+      const scrW = this.scale.width;
+      const scrH = this.scale.height;
+      const hudCol = 0x0a0e1a, hudAlpha = 0.78;
+
+      // ─── Panel JOUEUR (haut gauche) ───
+      const lpW = 230, lpH = 158, lpX = 14, lpY = 14;
+      const leftPanel = this.add.graphics().setScrollFactor(0);
+      leftPanel.fillStyle(hudCol, hudAlpha);
+      leftPanel.fillRoundedRect(lpX, lpY, lpW, lpH, 12);
+      leftPanel.lineStyle(1, 0xffffff, 0.12);
+      leftPanel.strokeRoundedRect(lpX, lpY, lpW, lpH, 12);
+
+      const pseudo = Player.getName() || 'anonyme';
+      this.pseudoText = this.add.text(lpX + 14, lpY + 12, '👤  ' + pseudo, {
+        font: 'bold 14px sans-serif',
+        color: '#ffdd44'
+      }).setScrollFactor(0);
+
+      const sepG = this.add.graphics().setScrollFactor(0);
+      sepG.lineStyle(1, 0xffffff, 0.15);
+      sepG.lineBetween(lpX + 14, lpY + 38, lpX + lpW - 14, lpY + 38);
+
+      this.timerText = this.add.text(lpX + 14, lpY + 46, '0.00', {
+        font: 'bold 40px monospace',
+        color: '#ffffff'
+      }).setScrollFactor(0);
+
+      this.bonusText = this.add.text(lpX + lpW - 14, lpY + 60, '', {
+        font: 'bold 13px monospace',
+        color: '#ffdd44'
+      }).setOrigin(1, 0).setScrollFactor(0);
+
+      this.speedText = this.add.text(lpX + 14, lpY + 100, '🏍  0 km/h', {
+        font: 'bold 13px monospace',
+        color: '#aaffaa'
+      }).setScrollFactor(0);
+
+      const bestVal = Player.getBest(this.levelIndex);
+      const bestStr = bestVal !== null
+        ? '★  meilleur : ' + bestVal.toFixed(2) + 's'
+        : '★  pas de record';
+      this.bestText = this.add.text(lpX + 14, lpY + 124, bestStr, {
+        font: 'bold 12px monospace',
+        color: '#ffaa66'
+      }).setScrollFactor(0);
+
+      // ─── Panel CHALLENGE (haut centre) ───
+      if (this.challengeMode) {
+        const cpW = 280, cpH = 158, cpX = (scrW - cpW) / 2, cpY = 14;
+        const centerPanel = this.add.graphics().setScrollFactor(0);
+        centerPanel.fillStyle(hudCol, hudAlpha);
+        centerPanel.fillRoundedRect(cpX, cpY, cpW, cpH, 12);
+        centerPanel.lineStyle(2, 0xffaa44, 0.45);
+        centerPanel.strokeRoundedRect(cpX, cpY, cpW, cpH, 12);
+
+        const durLabel = this.durationPerMap === 60 ? '1 MIN' : (this.durationPerMap === 180 ? '3 MIN' : '5 MIN');
+        const mapPos = this.mapSequence.length > 1
+          ? `MAP ${this.currentMapIdx + 1}/${this.mapSequence.length} · ${durLabel}`
+          : `CHALLENGE ${durLabel}`;
+        this.add.text(scrW / 2, cpY + 12, '⏰  ' + mapPos + '  ⏰', {
+          font: 'bold 11px sans-serif',
+          color: '#ffaa44'
+        }).setOrigin(0.5, 0).setScrollFactor(0);
+
+        const initMin = Math.floor(this.durationPerMap / 60);
+        const initSec = this.durationPerMap % 60;
+        const initTimer = `${initMin}:${initSec.toString().padStart(2, '0')}`;
+        this.challengeTimerText = this.add.text(scrW / 2, cpY + 30, initTimer, {
+          font: 'bold 48px monospace',
+          color: '#ffdd44'
+        }).setOrigin(0.5, 0).setScrollFactor(0);
+
+        // Petit séparateur
+        const cSep = this.add.graphics().setScrollFactor(0);
+        cSep.lineStyle(1, 0xffaa44, 0.25);
+        cSep.lineBetween(cpX + 30, cpY + 92, cpX + cpW - 30, cpY + 92);
+
+        this.runCountText = this.add.text(scrW / 2, cpY + 100, 'Run #' + this.runCount, {
+          font: 'bold 11px monospace',
+          color: '#ff8866'
+        }).setOrigin(0.5, 0).setScrollFactor(0);
+
+        const sessStr = this.sessionBestTime !== null
+          ? 'session : ' + this.sessionBestTime.toFixed(2) + 's'
+          : 'session : —';
+        this.sessionBestText = this.add.text(scrW / 2, cpY + 118, sessStr, {
+          font: 'bold 12px monospace',
+          color: '#aaffaa'
+        }).setOrigin(0.5, 0).setScrollFactor(0);
+
+        if (this.mode === 'solo') {
+          this.globalBestText = this.add.text(scrW / 2, cpY + 138, '', {
+            font: 'bold 11px monospace',
+            color: '#ffdd44'
+          }).setOrigin(0.5, 0).setScrollFactor(0);
+          if (!this.cachedTop) {
+            Leaderboard.top(this.levelIndex, 1).then(top => {
+              this.cachedTop = top || [];
+              this.updateGlobalBestUI();
+            });
+          } else {
+            this.updateGlobalBestUI();
+          }
+        } else {
+          this.opponentBestText = this.add.text(scrW / 2, cpY + 138, '', {
+            font: 'bold 11px monospace',
+            color: '#66ccff'
+          }).setOrigin(0.5, 0).setScrollFactor(0);
+          this.updateOpponentBestUI();
+        }
+      }
+
+      // ─── Panel NIVEAU (haut droit) ───
+      const rpW = 230, rpH = 64, rpX = scrW - rpW - 14, rpY = 14;
+      const rightPanel = this.add.graphics().setScrollFactor(0);
+      rightPanel.fillStyle(hudCol, hudAlpha);
+      rightPanel.fillRoundedRect(rpX, rpY, rpW, rpH, 12);
+      rightPanel.lineStyle(1, 0xffffff, 0.12);
+      rightPanel.strokeRoundedRect(rpX, rpY, rpW, rpH, 12);
+
+      this.levelText = this.add.text(rpX + rpW - 14, rpY + 12, level.name, {
+        font: 'bold 14px sans-serif',
+        color: '#ffffff'
+      }).setOrigin(1, 0).setScrollFactor(0);
+
+      const modeLabel = this.mode === 'solo'
+        ? 'SOLO'
+        : (this.mode === 'multi-host' ? 'MULTI · HOST' : 'MULTI · GUEST');
+      const modeCol = this.mode === 'solo' ? '#aaffaa' : '#66ccff';
+      this.modeText = this.add.text(rpX + rpW - 14, rpY + 36, modeLabel, {
+        font: 'bold 11px sans-serif',
+        color: modeCol
+      }).setOrigin(1, 0).setScrollFactor(0);
+
+      // ─── Help discret en bas ───
+      this.helpText = this.add.text(scrW / 2, scrH - 18,
+        '←→  pilote      ↑↓  penche       R  recommencer       ÉCHAP  menu', {
+        font: 'bold 11px sans-serif',
+        color: '#dddddd',
+        backgroundColor: '#000a',
+        padding: { x: 14, y: 6 }
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      // ─── Countdown gros au milieu ───
+      this.countdownText = this.add.text(scrW / 2, scrH / 2, '3', {
+        font: 'bold 160px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 10
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      // Réception data peer (P2P 1v1)
+      if (this.conn) {
+        this.peerListener = (data) => this.handlePeerData(data);
+        this.conn.on('data', this.peerListener);
+      }
+
+      // Réception events serveur (mode salon)
+      if (this.mode === 'server') {
+        this.serverHandlers = {
+          pos: (msg) => {
+            let g = this.ghosts.get(msg.id);
+            if (!g) {
+              g = { x: 0, y: 0, a: 0, wba: 0, wfa: 0, pseudo: '?', sessionBest: null, finished: false, crashed: false };
+              this.ghosts.set(msg.id, g);
+            }
+            g.x = msg.x; g.y = msg.y; g.a = msg.a; g.wba = msg.wba; g.wfa = msg.wfa;
+            g.crashed = msg.crashed; g.finished = msg.finished;
+            if (msg.sessionBest !== undefined && msg.sessionBest !== null) {
+              g.sessionBest = msg.sessionBest;
+            }
+          },
+          playerJoined: (msg) => {
+            this.ghosts.set(msg.id, {
+              x: 100, y: 340, a: 0, wba: 0, wfa: 0,
+              pseudo: msg.pseudo, sessionBest: null, finished: false, crashed: false
+            });
+            this.showFloatingText(msg.pseudo + ' rejoint le salon', '#66ccff');
+          },
+          playerLeft: (msg) => {
+            const g = this.ghosts.get(msg.id);
+            if (g) {
+              this.showFloatingText(g.pseudo + ' quitte le salon', '#ff8866');
+              if (g._label) { try { g._label.destroy(); } catch (e) {} }
+              this.ghosts.delete(msg.id);
+            }
+          },
+          finished: (msg) => {
+            this.showFloatingText(msg.pseudo + ' : ' + msg.time.toFixed(2) + 's', '#aaffaa');
+          },
+          pseudo: (msg) => {
+            const g = this.ghosts.get(msg.id);
+            if (g) g.pseudo = msg.pseudo;
+          },
+          mapEnd: (msg) => {
+            // Le serveur annonce la fin de la map → on affiche le top 5 + countdown
+            this.serverMapEnd(msg);
+          },
+          mapStart: (msg) => {
+            // Nouvelle map du serveur → on relance GameScene avec la nouvelle map
+            this.scene.restart({
+              level: msg.currentMapIdx,
+              mode: 'server',
+              currentMapIdx: msg.currentMapIdx,
+              mapStartedAt: msg.mapStartedAt,
+              mapDuration: msg.mapDuration,
+              inTransition: false,
+              transitionEndsAt: null,
+              existingPlayers: Array.from(this.ghosts.values()).map(g => ({
+                id: 'unknown', pseudo: g.pseudo, sessionBest: null
+              }))
+            });
+          },
+          close: () => {
+            this.showFloatingText('Connexion serveur perdue', '#ff4444');
+            this.time.delayedCall(2000, () => {
+              ServerConn.disconnect();
+              this.scene.start('Menu');
+            });
+          }
+        };
+        for (const [evt, fn] of Object.entries(this.serverHandlers)) {
+          ServerConn.on(evt, fn);
+        }
+
+        // Touche Q : quitter le salon
+        this.input.keyboard.on('keydown-Q', () => {
+          ServerConn.disconnect();
+          this.scene.start('Menu');
+        });
+      }
+
+      // Collisions
+      this.matter.world.on('collisionstart', this.onCollisionStart, this);
+      this.matter.world.on('collisionend', this.onCollisionEnd, this);
+
+      // Audio
+      if (window.audio) {
+        window.audio.resume();
+        window.audio.startEngine();
+      }
+
+      // Cleanup à la sortie de la scène
+      this.events.on('shutdown', () => {
+        if (window.audio) window.audio.stopEngine();
+        this.cleanup(false);
+        // Cleanup listeners serveur
+        if (this.serverHandlers) {
+          for (const [evt, fn] of Object.entries(this.serverHandlers)) {
+            ServerConn.off(evt, fn);
+          }
+          this.serverHandlers = null;
+        }
+      });
+    }
+
+    cleanup(closeConn = true) {
+      if (this.conn && this.peerListener) {
+        try { this.conn.off('data', this.peerListener); } catch (e) {}
+      }
+      if (closeConn && this.peer) {
+        try { this.peer.destroy(); } catch (e) {}
+      }
+    }
+
+    drawBackground() {
+      // Montagnes lointaines
+      const g1 = this.add.graphics();
+      g1.setScrollFactor(0.2);
+      g1.fillStyle(0x6688aa);
+      g1.beginPath();
+      g1.moveTo(-500, 800);
+      for (let x = -500; x < 6000; x += 200) {
+        const yy = 380 + Math.sin(x * 0.008) * 90 + Math.sin(x * 0.02) * 30;
+        g1.lineTo(x, yy);
+      }
+      g1.lineTo(6000, 800);
+      g1.closePath();
+      g1.fillPath();
+
+      // Montagnes plus proches
+      const g2 = this.add.graphics();
+      g2.setScrollFactor(0.45);
+      g2.fillStyle(0x88aacc);
+      g2.beginPath();
+      g2.moveTo(-500, 900);
+      for (let x = -500; x < 6000; x += 150) {
+        const yy = 460 + Math.sin(x * 0.012) * 70;
+        g2.lineTo(x, yy);
+      }
+      g2.lineTo(6000, 900);
+      g2.closePath();
+      g2.fillPath();
+
+      // Nuages
+      const cloudG = this.add.graphics();
+      cloudG.setScrollFactor(0.08);
+      cloudG.fillStyle(0xffffff, 0.85);
+      for (let i = 0; i < 12; i++) {
+        const x = i * 500 - 200;
+        const y = 60 + Math.sin(i * 1.3) * 50;
+        cloudG.fillCircle(x, y, 28);
+        cloudG.fillCircle(x + 22, y - 6, 32);
+        cloudG.fillCircle(x + 48, y, 25);
+        cloudG.fillCircle(x + 70, y + 4, 22);
+      }
+
+      // Soleil
+      const sun = this.add.graphics();
+      sun.setScrollFactor(0.05);
+      sun.fillStyle(0xffeb88, 0.8);
+      sun.fillCircle(900, 100, 40);
+      sun.fillStyle(0xffeb88, 0.3);
+      sun.fillCircle(900, 100, 60);
+    }
+
+    buildTerrain(points) {
+      // Bodies physiques (rectangles inclinés entre points)
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        const cx = (p1.x + p2.x) / 2;
+        // décale le rectangle vers le bas pour que sa face supérieure passe par les points
+        const cy = (p1.y + p2.y) / 2 + 50 * Math.cos(angle);
+        const cxOffset = -50 * Math.sin(angle);
+        this.matter.add.rectangle(cx + cxOffset, cy, len, 100, {
+          isStatic: true,
+          angle,
+          label: 'terrain',
+          friction: 0.9,
+          chamfer: { radius: 0 }
+        });
+      }
+
+      // Visuel : remplissage marron sous le terrain
+      const g = this.terrainGfx;
+      g.fillStyle(0x4a3a2a);
+      g.beginPath();
+      g.moveTo(points[0].x, 1500);
+      points.forEach(p => g.lineTo(p.x, p.y));
+      g.lineTo(points[points.length - 1].x, 1500);
+      g.closePath();
+      g.fillPath();
+
+      // Bande d'herbe en surface
+      g.fillStyle(0x55aa44);
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        const cx = (p1.x + p2.x) / 2;
+        const cy = (p1.y + p2.y) / 2;
+        const halfL = len / 2;
+        const halfH = 5;
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        const corners = [[-halfL, -halfH], [halfL, -halfH], [halfL, halfH], [-halfL, halfH]]
+          .map(([x, y]) => [cx + x * cos - y * sin, cy + x * sin + y * cos]);
+        g.beginPath();
+        g.moveTo(corners[0][0], corners[0][1]);
+        corners.forEach(c => g.lineTo(c[0], c[1]));
+        g.closePath();
+        g.fillPath();
+      }
+
+      // Petits brins d'herbe pour le détail
+      g.lineStyle(2, 0x77cc55);
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const segments = Math.floor(Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2) / 18);
+        for (let s = 0; s < segments; s++) {
+          const t = s / segments;
+          const x = p1.x + (p2.x - p1.x) * t;
+          const y = p1.y + (p2.y - p1.y) * t;
+          g.lineBetween(x, y, x + (Math.random() - 0.5) * 2, y - 4 - Math.random() * 3);
+        }
+      }
+    }
+
+    addObstacle(o) {
+      this.matter.add.rectangle(o.x, o.y, o.w, o.h, {
+        isStatic: true,
+        label: 'obstacle'
+      });
+      const g = this.obstaclesGfx;
+      g.fillStyle(0xaa3333);
+      g.fillRect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h);
+      g.lineStyle(2, 0x661111);
+      g.strokeRect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h);
+      // bandes jaunes danger
+      g.fillStyle(0xffdd00);
+      g.fillRect(o.x - o.w / 2 + 4, o.y - 4, o.w - 8, 3);
+    }
+
+    addFinishLine(level) {
+      const lastP = level.terrain[level.terrain.length - 1];
+      const groundY = lastP.y;
+      // sensor invisible, plein écran vertical
+      this.matter.add.rectangle(this.finishX, groundY - 250, 12, 500, {
+        isStatic: true,
+        isSensor: true,
+        label: 'finish'
+      });
+
+      // visuel : poteau + drapeau à damier
+      const g = this.add.graphics();
+      // poteau
+      g.fillStyle(0xeeeeee);
+      g.fillRect(this.finishX - 3, groundY - 500, 6, 500);
+      g.lineStyle(2, 0x222222);
+      g.strokeRect(this.finishX - 3, groundY - 500, 6, 500);
+      // drapeau damier
+      const flagW = 60, flagH = 50;
+      const flagY = groundY - 490;
+      const cellW = flagW / 6, cellH = flagH / 5;
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 6; c++) {
+          g.fillStyle((r + c) % 2 === 0 ? 0xffffff : 0x111111);
+          g.fillRect(this.finishX + c * cellW, flagY + r * cellH, cellW, cellH);
+        }
+      }
+      // Texte FINISH
+      this.add.text(this.finishX, groundY - 540, 'ARRIVÉE', {
+        font: 'bold 20px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 4
+      }).setOrigin(0.5);
+    }
+
+    createBike(x, y) {
+      const group = this.matter.world.nextGroup(true); // groupe négatif : pas de collision interne
+
+      // Moto plus grosse : chassis 90x18, roues r=17, offset 32x21
+      const chassis = this.matter.add.rectangle(x, y, 90, 18, {
+        density: 0.002,         // un peu plus léger → plus maniable
+        friction: 0.3,
+        label: 'chassis',
+        collisionFilter: { group }
+      });
+
+      const wheelBack = this.matter.add.circle(x - 32, y + 21, 17, {
+        density: 0.005,
+        friction: 1.0,
+        frictionStatic: 1.2,
+        label: 'wheel',
+        collisionFilter: { group }
+      });
+
+      const wheelFront = this.matter.add.circle(x + 32, y + 21, 17, {
+        density: 0.005,
+        friction: 1.0,
+        frictionStatic: 1.2,
+        label: 'wheel',
+        collisionFilter: { group }
+      });
+
+      this.matter.add.constraint(chassis, wheelBack, 0, 0.8, {
+        pointA: { x: -32, y: 21 }, length: 0
+      });
+      this.matter.add.constraint(chassis, wheelFront, 0, 0.8, {
+        pointA: { x: 32, y: 21 }, length: 0
+      });
+
+      this.lastAngle = chassis.angle;
+
+      return { chassis, wheelBack, wheelFront };
+    }
+
+    onCollisionStart(event) {
+      event.pairs.forEach(pair => {
+        const labels = [pair.bodyA.label, pair.bodyB.label].sort();
+        const labelStr = labels.join('-');
+
+        if (labelStr === 'terrain-wheel' || labelStr === 'obstacle-wheel') {
+          this.contactCount++;
+        }
+        if (this.crashed || this.finished) return;
+
+        // Crash uniquement si la moto est franchement retournée (>110°)
+        if (labelStr === 'chassis-terrain' || labelStr === 'chassis-obstacle') {
+          let a = this.bike.chassis.angle;
+          while (a > Math.PI) a -= 2 * Math.PI;
+          while (a < -Math.PI) a += 2 * Math.PI;
+          if (Math.abs(a) > 1.9) {
+            this.crash();
+          } else {
+            // juste un rebond, pas de crash
+            const v = this.bike.chassis.velocity;
+            Matter.Body.setVelocity(this.bike.chassis, { x: v.x * 0.7, y: v.y - 2 });
+            this.cameras.main.shake(80, 0.006);
+          }
+        }
+        // Roue qui touche une mine = freinage, pas crash
+        if (labelStr === 'obstacle-wheel') {
+          const v = this.bike.chassis.velocity;
+          Matter.Body.setVelocity(this.bike.chassis, { x: v.x * 0.4, y: v.y - 4 });
+          this.cameras.main.shake(120, 0.008);
+          if (window.audio) window.audio.playBump();
+        }
+
+        // arrivée
+        if (labelStr === 'finish-wheel' || labelStr === 'chassis-finish') {
+          this.finish();
+        }
+      });
+    }
+
+    onCollisionEnd(event) {
+      event.pairs.forEach(pair => {
+        const labels = [pair.bodyA.label, pair.bodyB.label].sort();
+        const labelStr = labels.join('-');
+        if (labelStr === 'terrain-wheel' || labelStr === 'obstacle-wheel') {
+          this.contactCount = Math.max(0, this.contactCount - 1);
+        }
+      });
+    }
+
+    update(time, delta) {
+      // === Countdown (refactor : startTime garanti après 3s même si frame skip) ===
+      const ctElapsed = (time - this.countdownStart) / 1000;
+
+      if (this.startTime === null && ctElapsed >= 3) {
+        this.startTime = this.countdownStart + 3000;
+        this.lastAngle = this.bike.chassis.angle;
+        // Premier run : démarre le compte à rebours challenge
+        if (this.challengeMode && this.challengeEndTime === null) {
+          this.challengeEndTime = this.startTime + this.CHALLENGE_DURATION * 1000;
+        }
+      }
+
+      if (ctElapsed < 3) {
+        const num = ctElapsed < 1 ? '3' : (ctElapsed < 2 ? '2' : '1');
+        this.countdownText.setText(num).setVisible(true);
+
+        // figer la moto pendant le countdown
+        Matter.Body.setVelocity(this.bike.chassis, { x: 0, y: 0 });
+        Matter.Body.setVelocity(this.bike.wheelBack, { x: 0, y: 0 });
+        Matter.Body.setVelocity(this.bike.wheelFront, { x: 0, y: 0 });
+        Matter.Body.setAngularVelocity(this.bike.chassis, 0);
+        Matter.Body.setAngularVelocity(this.bike.wheelBack, 0);
+        Matter.Body.setAngularVelocity(this.bike.wheelFront, 0);
+
+        this.followTarget.x = this.bike.chassis.position.x;
+        this.followTarget.y = this.bike.chassis.position.y;
+        this.drawBike(this.bike, this.bikeGfx, 0xff5533);
+        if (this.ghostState && this.ghostGfx) this.drawGhost();
+        return;
+      } else if (ctElapsed < 3.7) {
+        this.countdownText.setText('GO !').setColor('#44ff44').setVisible(true);
+      } else {
+        this.countdownText.setVisible(false);
+      }
+
+      // === Inputs (flèches + ZQSD/WASD) ===
+      if (!this.crashed && !this.finished) {
+        const accel = this.cursors.right.isDown || this.keyD.isDown;
+        const brake = this.cursors.left.isDown || this.keyA.isDown || this.keyQ.isDown;
+        const tiltUp = this.cursors.up.isDown || this.keyW.isDown || this.keyZ.isDown;
+        const tiltDown = this.cursors.down.isDown || this.keyS.isDown;
+
+        if (accel) {
+          // roues qui tournent vite
+          Matter.Body.setAngularVelocity(this.bike.wheelBack,
+            Math.min(this.bike.wheelBack.angularVelocity + 0.10, 1.2));
+          Matter.Body.setAngularVelocity(this.bike.wheelFront,
+            Math.min(this.bike.wheelFront.angularVelocity + 0.05, 1.2));
+          // poussée horizontale (plus forte)
+          const a = this.bike.chassis.angle;
+          Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
+            x: Math.cos(a) * 0.0024,
+            y: Math.sin(a) * 0.0024
+          });
+        }
+        if (brake) {
+          Matter.Body.setAngularVelocity(this.bike.wheelBack,
+            Math.max(this.bike.wheelBack.angularVelocity - 0.09, -0.6));
+          Matter.Body.setAngularVelocity(this.bike.wheelFront,
+            Math.max(this.bike.wheelFront.angularVelocity - 0.09, -0.6));
+          const a = this.bike.chassis.angle;
+          Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
+            x: -Math.cos(a) * 0.0012,
+            y: -Math.sin(a) * 0.0012
+          });
+        }
+        if (tiltUp) {
+          // Wheelie : couple plus fort + lift visible
+          const onGround = this.contactCount > 0;
+          const boost = (accel && onGround) ? 0.038 : 0.022;
+          Matter.Body.setAngularVelocity(this.bike.chassis,
+            Math.max(this.bike.chassis.angularVelocity - boost, -0.8));
+          if (accel && onGround) {
+            Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
+              x: 0, y: -0.0010
+            });
+          }
+        }
+        if (tiltDown) {
+          Matter.Body.setAngularVelocity(this.bike.chassis,
+            Math.min(this.bike.chassis.angularVelocity + 0.022, 0.8));
+        }
+      }
+
+      // === Tracking flips ===
+      const angle = this.bike.chassis.angle;
+      let deltaA = angle - this.lastAngle;
+      while (deltaA > Math.PI) deltaA -= 2 * Math.PI;
+      while (deltaA < -Math.PI) deltaA += 2 * Math.PI;
+      const inAir = this.contactCount === 0;
+      if (inAir) {
+        this.cumulativeRotation += deltaA;
+      } else {
+        if (Math.abs(this.cumulativeRotation) > Math.PI * 1.7) {
+          const fullFlips = Math.max(1, Math.floor(Math.abs(this.cumulativeRotation) / (Math.PI * 2)));
+          if (this.cumulativeRotation < 0) {
+            const bonus = 2 * fullFlips;
+            this.flipBonus += bonus;
+            this.showFloatingText('BACKFLIP !  -' + bonus + 's', '#ffdd44');
+            if (window.audio) window.audio.playFlip();
+          } else {
+            const bonus = 1 * fullFlips;
+            this.flipBonus += bonus;
+            this.showFloatingText('FRONTFLIP !  -' + bonus + 's', '#44ddff');
+            if (window.audio) window.audio.playFlip();
+          }
+        }
+        this.cumulativeRotation = 0;
+      }
+      this.lastAngle = angle;
+
+      // === Caméra ===
+      const vx = this.bike.chassis.velocity.x;
+      const lookAhead = Math.max(-50, Math.min(150, vx * 18));
+      this.followTarget.x = this.bike.chassis.position.x + lookAhead;
+      this.followTarget.y = this.bike.chassis.position.y - 60;
+
+      // === Timer ===
+      if (!this.finished && !this.crashed && this.startTime !== null) {
+        this.elapsed = Math.max(0, (time - this.startTime) / 1000 - this.flipBonus);
+      }
+      this.timerText.setText(this.elapsed.toFixed(2));
+      if (this.flipBonus > 0) {
+        this.bonusText.setText('-' + this.flipBonus.toFixed(0) + 's bonus');
+      }
+      // Vitesse en km/h (approx, basée sur la vélocité horizontale)
+      const speedKmh = Math.abs(this.bike.chassis.velocity.x) * 36;
+      this.speedText.setText('🏍  ' + Math.floor(speedKmh) + ' km/h');
+
+      // Module le bruit moteur avec la vitesse
+      if (window.audio && !this.crashed) {
+        window.audio.setEngineSpeed(Math.min(1, speedKmh / 200));
+      }
+
+      // === Server transition countdown ===
+      if (this.serverEndOverlay && this.serverNextMapAt && this.serverCountdownText) {
+        const remaining = Math.max(0, (this.serverNextMapAt - Date.now()) / 1000);
+        this.serverCountdownText.setText(`dans ${remaining.toFixed(1)}s`);
+      }
+
+      // === Challenge timer ===
+      if (this.challengeMode && this.challengeEndTime !== null && !this.challengeEnded) {
+        const remaining = (this.challengeEndTime - time) / 1000;
+        if (remaining <= 0) {
+          this.challengeEnded = true;
+          this.endChallenge();
+        } else {
+          if (remaining > 60) {
+            const min = Math.floor(remaining / 60);
+            const sec = Math.floor(remaining % 60);
+            this.challengeTimerText.setText(`${min}:${sec.toString().padStart(2, '0')}`);
+            this.challengeTimerText.setColor('#ffdd44');
+          } else {
+            this.challengeTimerText.setText(remaining.toFixed(1) + 's');
+            this.challengeTimerText.setColor(remaining < 10 ? '#ff4444' : '#ff8844');
+          }
+        }
+      }
+
+      // === Sync multi P2P ===
+      if (this.conn && this.conn.open) {
+        if (!this._lastSent || time - this._lastSent > 33) {
+          try {
+            this.conn.send({
+              type: 'pos',
+              x: this.bike.chassis.position.x,
+              y: this.bike.chassis.position.y,
+              a: this.bike.chassis.angle,
+              wba: this.bike.wheelBack.angle,
+              wfa: this.bike.wheelFront.angle,
+              crashed: this.crashed,
+              finished: this.finished,
+              pseudo: Player.getName(),
+              sessionBest: this.sessionBestTime
+            });
+          } catch (e) {}
+          this._lastSent = time;
+        }
+      }
+
+      // === Sync mode serveur ===
+      if (this.mode === 'server' && ServerConn.connected) {
+        if (!this._lastSent || time - this._lastSent > 33) {
+          ServerConn.send({
+            type: 'pos',
+            x: this.bike.chassis.position.x,
+            y: this.bike.chassis.position.y,
+            a: this.bike.chassis.angle,
+            wba: this.bike.wheelBack.angle,
+            wfa: this.bike.wheelFront.angle,
+            crashed: this.crashed,
+            finished: this.finished,
+            sessionBest: this.sessionBestTime
+          });
+          this._lastSent = time;
+        }
+      }
+
+      // === Rendus ===
+      this.drawBike(this.bike, this.bikeGfx, 0xff5533);
+      if (this.ghostState && this.ghostGfx) this.drawGhost();
+      if (this.ghosts && this.ghostsGfx) this.drawAllGhosts();
+
+      // chute en dehors de la carte
+      if (this.bike.chassis.position.y > 1500 && !this.crashed && !this.finished) {
+        this.crash();
+      }
+
+      // Floating texts
+      this.flipMessages = this.flipMessages.filter(msg => {
+        msg.life -= delta / 1000;
+        if (msg.life <= 0) {
+          msg.text.destroy();
+          return false;
+        }
+        msg.text.y -= 50 * delta / 1000;
+        msg.text.setAlpha(Math.min(1, msg.life * 1.4));
+        return true;
+      });
+    }
+
+    showFloatingText(content, color) {
+      const t = this.add.text(this.scale.width / 2, this.scale.height / 2 - 30, content, {
+        font: 'bold 36px sans-serif',
+        color,
+        stroke: '#000', strokeThickness: 5
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.flipMessages.push({ text: t, life: 1.5 });
+    }
+
+    updateGlobalBestUI() {
+      if (!this.globalBestText) return;
+      if (this.cachedTop && this.cachedTop.length > 0) {
+        const w = this.cachedTop[0];
+        this.globalBestText.setText(`👑 ${w.pseudo} — ${parseFloat(w.time).toFixed(2)}s`);
+      } else if (Leaderboard.isConfigured()) {
+        this.globalBestText.setText('👑 sois le 1er à finir !');
+      }
+    }
+
+    updateOpponentBestUI() {
+      if (!this.opponentBestText) return;
+      const name = this.peerPseudo || '?';
+      if (this.peerSessionBest !== null) {
+        this.opponentBestText.setText(`👤 ${name} : ${this.peerSessionBest.toFixed(2)}s`);
+      } else {
+        this.opponentBestText.setText(`👤 ${name} : —`);
+      }
+    }
+
+    endChallenge() {
+      if (window.audio) window.audio.stopEngine();
+
+      // Mode serveur : ne lance pas ChallengeEnd, on attend les events du serveur
+      if (this.mode === 'server') {
+        return;
+      }
+
+      // Envoie une dernière mise à jour du best au peer
+      if (this.conn && this.conn.open) {
+        try {
+          this.conn.send({
+            type: 'pos',
+            x: this.bike.chassis.position.x,
+            y: this.bike.chassis.position.y,
+            a: this.bike.chassis.angle,
+            wba: this.bike.wheelBack.angle,
+            wfa: this.bike.wheelFront.angle,
+            crashed: this.crashed,
+            finished: this.finished,
+            pseudo: Player.getName(),
+            sessionBest: this.sessionBestTime
+          });
+        } catch (e) {}
+      }
+
+      // Enregistre le résultat de cette map dans la séquence
+      const newResults = [...this.results, {
+        mapIndex: this.levelIndex,
+        mySessionBest: this.sessionBestTime,
+        peerSessionBest: this.peerSessionBest,
+        runCount: this.runCount
+      }];
+
+      const isLastMap = this.currentMapIdx >= this.mapSequence.length - 1;
+
+      this.scene.pause();
+      this.scene.launch('ChallengeEnd', {
+        level: this.levelIndex,
+        sessionBest: this.sessionBestTime,
+        runCount: this.runCount,
+        cachedTop: this.cachedTop,
+        multiMode: this.mode !== 'solo',
+        myPseudo: Player.getName() || '?',
+        peerPseudo: this.peerPseudo,
+        peerSessionBest: this.peerSessionBest,
+        peer: this.peer,
+        conn: this.conn,
+        // Séquence
+        mapSequence: this.mapSequence,
+        durationPerMap: this.durationPerMap,
+        currentMapIdx: this.currentMapIdx,
+        results: newResults,
+        isLastMap,
+        gameMode: this.mode
+      });
+    }
+
+    handlePeerData(data) {
+      if (!data) return;
+      if (data.type === 'pos' && this.ghostState) {
+        this.ghostState.x = data.x;
+        this.ghostState.y = data.y;
+        this.ghostState.a = data.a;
+        this.ghostState.wba = data.wba;
+        this.ghostState.wfa = data.wfa;
+        this.ghostState.crashed = data.crashed;
+        this.ghostState.finished = data.finished;
+        // Récup pseudo + best en piggyback
+        if (data.pseudo && data.pseudo !== this.peerPseudo) {
+          this.peerPseudo = data.pseudo;
+          this.updateOpponentBestUI();
+        }
+        if (data.sessionBest !== undefined &&
+            data.sessionBest !== null &&
+            (this.peerSessionBest === null || data.sessionBest < this.peerSessionBest)) {
+          this.peerSessionBest = data.sessionBest;
+          this.updateOpponentBestUI();
+        }
+      } else if (data.type === 'finished') {
+        this.opponentFinishTime = data.time;
+      }
+    }
+
+    drawBike(bike, gfx, color) {
+      gfx.clear();
+
+      const c = bike.chassis;
+      const cos = Math.cos(c.angle), sin = Math.sin(c.angle);
+
+      // local(lx, ly) → world. Y NÉGATIF = au-dessus de la moto (Phaser : Y vers le bas).
+      const local = (lx, ly) => ({
+        x: c.position.x + lx * cos - ly * sin,
+        y: c.position.y + lx * sin + ly * cos
+      });
+
+      // Suspensions (fourches) du chassis vers les roues
+      gfx.lineStyle(5, 0x1a1a1a);
+      const susBack = local(-32, 5);
+      const susFront = local(32, 5);
+      gfx.lineBetween(susBack.x, susBack.y, bike.wheelBack.position.x, bike.wheelBack.position.y);
+      gfx.lineBetween(susFront.x, susFront.y, bike.wheelFront.position.x, bike.wheelFront.position.y);
+
+      // Roues r=17
+      const drawWheel = (wheel) => {
+        const cx = wheel.position.x, cy = wheel.position.y;
+        gfx.fillStyle(0x0a0a0a);
+        gfx.fillCircle(cx, cy, 18);
+        gfx.lineStyle(2, 0x000000);
+        gfx.strokeCircle(cx, cy, 18);
+        gfx.fillStyle(0x999999);
+        gfx.fillCircle(cx, cy, 11);
+        gfx.lineStyle(1.5, 0x555555);
+        gfx.strokeCircle(cx, cy, 11);
+        gfx.lineStyle(2, 0xdddddd);
+        for (let i = 0; i < 6; i++) {
+          const a = wheel.angle + i * Math.PI / 3;
+          gfx.lineBetween(cx, cy, cx + Math.cos(a) * 10, cy + Math.sin(a) * 10);
+        }
+        gfx.fillStyle(0x444444);
+        gfx.fillCircle(cx, cy, 4);
+      };
+      drawWheel(bike.wheelBack);
+      drawWheel(bike.wheelFront);
+
+      // Châssis (cadre)
+      gfx.fillStyle(color);
+      gfx.lineStyle(2, 0x111111);
+      const frame = [
+        local(-40, 6), local(40, 6), local(38, -5), local(-38, -5)
+      ];
+      gfx.beginPath();
+      gfx.moveTo(frame[0].x, frame[0].y);
+      frame.forEach(p => gfx.lineTo(p.x, p.y));
+      gfx.closePath();
+      gfx.fillPath();
+      gfx.strokePath();
+
+      // Réservoir (couleur plus sombre au-dessus du chassis, Y négatif)
+      const tankColor = Phaser.Display.Color.ValueToColor(color).clone().darken(20).color;
+      gfx.fillStyle(tankColor);
+      const tank = [
+        local(-16, -5), local(20, -5), local(12, -22), local(-12, -22)
+      ];
+      gfx.beginPath();
+      gfx.moveTo(tank[0].x, tank[0].y);
+      tank.forEach(p => gfx.lineTo(p.x, p.y));
+      gfx.closePath();
+      gfx.fillPath();
+      gfx.lineStyle(1.5, 0x111111);
+      gfx.strokePath();
+
+      // Selle (zone noire derrière le tank)
+      gfx.fillStyle(0x111111);
+      const seat = [
+        local(-42, -5), local(-14, -5), local(-12, -16), local(-40, -16)
+      ];
+      gfx.beginPath();
+      gfx.moveTo(seat[0].x, seat[0].y);
+      seat.forEach(p => gfx.lineTo(p.x, p.y));
+      gfx.closePath();
+      gfx.fillPath();
+
+      // Phare avant (devant le chassis, légèrement au-dessus)
+      const head = local(40, -6);
+      gfx.fillStyle(0xffeebb);
+      gfx.fillCircle(head.x, head.y, 6);
+      gfx.lineStyle(1.5, 0x111111);
+      gfx.strokeCircle(head.x, head.y, 6);
+      // halo de lumière (en avant du phare)
+      const halo = local(52, -6);
+      gfx.fillStyle(0xffffaa, 0.25);
+      gfx.fillCircle(halo.x, halo.y, 16);
+
+      // Pot d'échappement (arrière, légèrement sous le chassis)
+      gfx.fillStyle(0x777777);
+      const exhaust = [
+        local(-42, 2), local(-58, 0), local(-58, 8), local(-42, 10)
+      ];
+      gfx.beginPath();
+      gfx.moveTo(exhaust[0].x, exhaust[0].y);
+      exhaust.forEach(p => gfx.lineTo(p.x, p.y));
+      gfx.closePath();
+      gfx.fillPath();
+      gfx.lineStyle(1.5, 0x333333);
+      gfx.strokePath();
+
+      // Guidon (du chassis vers le haut, à l'avant)
+      gfx.lineStyle(4, 0x222222);
+      const hbase = local(28, -5);
+      const hbar = local(26, -28);
+      gfx.lineBetween(hbase.x, hbase.y, hbar.x, hbar.y);
+      gfx.fillStyle(0x222222);
+      gfx.fillCircle(hbar.x, hbar.y, 4);
+
+      // === PILOTE (toutes coords avec Y négatif = au-dessus) ===
+      const hip = local(-22, -18);       // bassin (sur la selle)
+      const knee = local(2, -16);         // genou plié vers l'avant
+      const foot = local(2, -2);          // pied sur le repose-pieds
+      const shoulder = local(-8, -38);    // épaule (penchée en avant)
+      const elbow = local(8, -32);        // coude
+      const helmet = local(-2, -52);      // tête
+      const visor = local(4, -52);        // visière
+
+      // Jambe (cuisse + tibia)
+      gfx.lineStyle(8, 0x222244);
+      gfx.lineBetween(hip.x, hip.y, knee.x, knee.y);
+      gfx.lineBetween(knee.x, knee.y, foot.x, foot.y);
+
+      // Torse (du bassin à l'épaule, plus épais)
+      gfx.lineStyle(16, 0x3344aa);
+      gfx.lineBetween(hip.x, hip.y, shoulder.x, shoulder.y);
+      // contour torse
+      gfx.lineStyle(2, 0x111122);
+      gfx.lineBetween(hip.x, hip.y, shoulder.x, shoulder.y);
+
+      // Bras (épaule → coude → guidon)
+      gfx.lineStyle(6, 0x3344aa);
+      gfx.lineBetween(shoulder.x, shoulder.y, elbow.x, elbow.y);
+      gfx.lineBetween(elbow.x, elbow.y, hbar.x, hbar.y);
+      // contour bras
+      gfx.lineStyle(1.5, 0x111122);
+      gfx.lineBetween(shoulder.x, shoulder.y, elbow.x, elbow.y);
+      gfx.lineBetween(elbow.x, elbow.y, hbar.x, hbar.y);
+
+      // Cou (petit lien entre épaule et casque)
+      gfx.lineStyle(6, 0xffaa66);
+      gfx.lineBetween(shoulder.x, shoulder.y, helmet.x, helmet.y);
+
+      // Casque (rond orange)
+      gfx.fillStyle(0xff8833);
+      gfx.fillCircle(helmet.x, helmet.y, 12);
+      gfx.lineStyle(2, 0x222222);
+      gfx.strokeCircle(helmet.x, helmet.y, 12);
+
+      // Bande blanche sur le casque
+      gfx.lineStyle(3, 0xffffff);
+      const bandA = local(-7, -55);
+      const bandB = local(3, -55);
+      gfx.lineBetween(bandA.x, bandA.y, bandB.x, bandB.y);
+
+      // Visière noire
+      gfx.fillStyle(0x111122);
+      gfx.fillCircle(visor.x, visor.y, 6);
+      // reflet bleu
+      gfx.fillStyle(0x66aaff, 0.8);
+      const reflect = local(5, -53);
+      gfx.fillCircle(reflect.x, reflect.y, 2);
+    }
+
+    drawAllGhosts() {
+      const g = this.ghostsGfx;
+      g.clear();
+      // Couleurs par défaut pour différencier les joueurs
+      const colors = [0x3399ff, 0xff66cc, 0x88ff66, 0xffaa44, 0xaa66ff, 0x66ffff, 0xff4444];
+      let idx = 0;
+      for (const [id, s] of this.ghosts) {
+        const color = colors[idx % colors.length]; idx++;
+        const alpha = s.crashed ? 0.3 : 0.7;
+        const cos = Math.cos(s.a), sin = Math.sin(s.a);
+        // Roues
+        const wbx = s.x + (-32) * cos - 21 * sin;
+        const wby = s.y + (-32) * sin + 21 * cos;
+        const wfx = s.x + 32 * cos - 21 * sin;
+        const wfy = s.y + 32 * sin + 21 * cos;
+        g.fillStyle(0x111111, alpha);
+        g.fillCircle(wbx, wby, 17);
+        g.fillCircle(wfx, wfy, 17);
+        g.lineStyle(2, color, alpha);
+        g.strokeCircle(wbx, wby, 17);
+        g.strokeCircle(wfx, wfy, 17);
+        // Châssis
+        g.fillStyle(color, alpha);
+        const w = 90, h = 18;
+        const corners = [[-w/2, -h/2], [w/2, -h/2], [w/2, h/2], [-w/2, h/2]]
+          .map(([x, y]) => [s.x + x*cos - y*sin, s.y + x*sin + y*cos]);
+        g.beginPath();
+        g.moveTo(corners[0][0], corners[0][1]);
+        corners.forEach(c => g.lineTo(c[0], c[1]));
+        g.closePath();
+        g.fillPath();
+        // Casque
+        const cAngle = s.a - Math.PI / 2;
+        const hx = s.x + Math.cos(cAngle) * 38;
+        const hy = s.y + Math.sin(cAngle) * 38;
+        g.fillStyle(color, alpha);
+        g.fillCircle(hx, hy, 11);
+        // Pseudo flottant au-dessus
+        if (s.pseudo) {
+          if (!s._label) {
+            s._label = this.add.text(0, 0, s.pseudo, {
+              font: 'bold 12px sans-serif',
+              color: '#ffffff',
+              backgroundColor: '#000a',
+              padding: { x: 4, y: 2 }
+            }).setOrigin(0.5);
+          }
+          s._label.setPosition(s.x, s.y - 70);
+          s._label.setAlpha(alpha + 0.2);
+        }
+      }
+    }
+
+    serverMapEnd(msg) {
+      // Affiche un overlay avec les scores du serveur, puis attend mapStart
+      if (this.serverEndOverlay) return; // déjà affiché
+      this.challengeEnded = true;
+      const w = this.scale.width;
+      const h = this.scale.height;
+
+      this.serverEndOverlay = this.add.container(0, 0).setScrollFactor(0);
+      const bg = this.add.rectangle(0, 0, w, h, 0x000000, 0.78).setOrigin(0);
+      this.serverEndOverlay.add(bg);
+
+      const title = this.add.text(w / 2, h / 2 - 200, 'FIN DE LA MAP', {
+        font: 'bold 48px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 6
+      }).setOrigin(0.5);
+      this.serverEndOverlay.add(title);
+
+      this.add.text(w / 2, h / 2 - 150, LEVELS[this.levelIndex].name, {
+        font: '16px sans-serif', color: '#aaa'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      // Top 5
+      this.add.text(w / 2, h / 2 - 100, '🏆  TOP 5  🏆', {
+        font: 'bold 16px sans-serif', color: '#ffdd44'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      const myName = Player.getName();
+      const medals = ['🥇', '🥈', '🥉', '4.', '5.'];
+      const colors = ['#ffdd44', '#cccccc', '#cd7f32', '#aaaaaa', '#888888'];
+      if (msg.scores && msg.scores.length > 0) {
+        msg.scores.forEach((s, i) => {
+          const isMe = s.pseudo === myName;
+          const txt = `${medals[i]}  ${s.pseudo}  —  ${parseFloat(s.time).toFixed(2)}s`;
+          this.add.text(w / 2, h / 2 - 60 + i * 26, txt, {
+            font: 'bold 17px monospace',
+            color: isMe ? '#ff8833' : colors[i],
+            stroke: '#000', strokeThickness: 2
+          }).setOrigin(0.5).setScrollFactor(0);
+        });
+      } else {
+        this.add.text(w / 2, h / 2 - 30, 'aucun score sur cette map', {
+          font: 'bold 18px sans-serif', color: '#ff8866'
+        }).setOrigin(0.5).setScrollFactor(0);
+      }
+
+      // Countdown
+      this.serverNextMapText = this.add.text(w / 2, h / 2 + 130,
+        `Prochaine map : ${LEVELS[msg.nextMapIdx].name}`, {
+        font: 'bold 18px sans-serif', color: '#fff',
+        stroke: '#000', strokeThickness: 3
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      this.serverCountdownText = this.add.text(w / 2, h / 2 + 165, '', {
+        font: 'bold 22px monospace', color: '#ffdd44',
+        stroke: '#000', strokeThickness: 2
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      this.serverNextMapAt = msg.nextMapAt;
+
+      // Stop le moteur
+      if (window.audio) window.audio.stopEngine();
+    }
+
+    drawGhost() {
+      const g = this.ghostGfx;
+      g.clear();
+      const s = this.ghostState;
+      const alpha = s.crashed ? 0.3 : 0.75;
+      const cos = Math.cos(s.a), sin = Math.sin(s.a);
+
+      // roues
+      const wbx = s.x + (-25) * cos - 16 * sin;
+      const wby = s.y + (-25) * sin + 16 * cos;
+      const wfx = s.x + 25 * cos - 16 * sin;
+      const wfy = s.y + 25 * sin + 16 * cos;
+
+      g.fillStyle(0x111111, alpha);
+      g.fillCircle(wbx, wby, 13);
+      g.fillCircle(wfx, wfy, 13);
+      g.lineStyle(2, 0x3399ff, alpha);
+      g.strokeCircle(wbx, wby, 13);
+      g.strokeCircle(wfx, wfy, 13);
+      // rayons
+      g.lineStyle(1.5, 0x99ccff, alpha);
+      for (let i = 0; i < 4; i++) {
+        const a = s.wba + i * Math.PI / 4;
+        g.lineBetween(wbx, wby, wbx + Math.cos(a) * 11, wby + Math.sin(a) * 11);
+        const a2 = s.wfa + i * Math.PI / 4;
+        g.lineBetween(wfx, wfy, wfx + Math.cos(a2) * 11, wfy + Math.sin(a2) * 11);
+      }
+
+      // châssis
+      g.fillStyle(0x3399ff, alpha);
+      g.lineStyle(2, 0x1166cc, alpha);
+      const w = 70, h = 14;
+      const corners = [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]]
+        .map(([x, y]) => [s.x + x * cos - y * sin, s.y + x * sin + y * cos]);
+      g.beginPath();
+      g.moveTo(corners[0][0], corners[0][1]);
+      corners.forEach(c => g.lineTo(c[0], c[1]));
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+
+      // pilote
+      const cAngle = s.a - Math.PI / 2;
+      const px = s.x + Math.cos(cAngle) * 16;
+      const py = s.y + Math.sin(cAngle) * 16;
+      g.fillStyle(0x224488, alpha);
+      const bw = 14, bh = 20;
+      const bcorners = [[-bw / 2, -bh / 2], [bw / 2, -bh / 2], [bw / 2, bh / 2], [-bw / 2, bh / 2]]
+        .map(([x, y]) => [px + x * cos - y * sin, py + x * sin + y * cos]);
+      g.beginPath();
+      g.moveTo(bcorners[0][0], bcorners[0][1]);
+      bcorners.forEach(c => g.lineTo(c[0], c[1]));
+      g.closePath();
+      g.fillPath();
+
+      const hx = s.x + Math.cos(cAngle) * 32;
+      const hy = s.y + Math.sin(cAngle) * 32;
+      g.fillStyle(0x66ccff, alpha);
+      g.fillCircle(hx, hy, 8);
+    }
+
+    crash() {
+      if (this.crashed || this.finished) return;
+      this.crashed = true;
+
+      if (this.conn && this.conn.open) {
+        try { this.conn.send({ type: 'crashed' }); } catch (e) {}
+      }
+
+      if (window.audio) {
+        window.audio.playCrash();
+        window.audio.stopEngine();
+      }
+
+      this.cameras.main.shake(280, 0.018);
+      this.cameras.main.flash(120, 255, 60, 60);
+
+      // Mode serveur : auto-restart même map (pas d'écran de fin)
+      if (this.mode === 'server') {
+        this.time.delayedCall(1400, () => {
+          if (this.time.now < this.challengeEndTime - 500 && !this.challengeEnded) {
+            this.scene.restart({
+              level: this.levelIndex,
+              mode: 'server',
+              currentMapIdx: this.levelIndex,
+              mapStartedAt: this.serverState.mapStartedAt,
+              mapDuration: this.serverState.mapDuration,
+              existingPlayers: Array.from(this.ghosts.entries()).map(([id, g]) => ({
+                id, pseudo: g.pseudo, sessionBest: g.sessionBest
+              })),
+              sessionBestTime: this.sessionBestTime,
+              runCount: this.runCount + 1
+            });
+          }
+        });
+        return;
+      }
+
+      // En mode challenge : auto-restart si encore du temps (solo + multi P2P)
+      if (this.challengeMode && this.challengeEndTime !== null) {
+        this.time.delayedCall(1400, () => {
+          if (this.time.now < this.challengeEndTime - 500) {
+            this.scene.restart({
+              level: this.levelIndex,
+              mode: this.mode,
+              conn: this.conn,
+              peer: this.peer,
+              challengeEndTime: this.challengeEndTime,
+              challengeEndAt: this.challengeEndAt,
+              sessionBestTime: this.sessionBestTime,
+              runCount: this.runCount + 1,
+              cachedTop: this.cachedTop,
+              peerPseudo: this.peerPseudo,
+              peerSessionBest: this.peerSessionBest,
+              mapSequence: this.mapSequence,
+              durationPerMap: this.durationPerMap,
+              currentMapIdx: this.currentMapIdx,
+              results: this.results
+            });
+          } else {
+            this.endChallenge();
+          }
+        });
+        return;
+      }
+
+      this.time.delayedCall(900, () => {
+        this.scene.pause();
+        this.scene.launch('GameOver', {
+          mode: 'crash',
+          level: this.levelIndex,
+          time: this.elapsed,
+          gameMode: this.mode,
+          conn: this.conn,
+          peer: this.peer
+        });
+      });
+    }
+
+    finish() {
+      if (this.crashed || this.finished) return;
+      this.finished = true;
+
+      let newBest = false;
+      // Best perso (localStorage)
+      const prev = Player.getBest(this.levelIndex);
+      if (prev === null || this.elapsed < prev) {
+        Player.setBest(this.levelIndex, this.elapsed);
+        newBest = true;
+      }
+      // Best de la session (challenge)
+      if (this.sessionBestTime === null || this.elapsed < this.sessionBestTime) {
+        this.sessionBestTime = this.elapsed;
+      }
+      // Push score sur le leaderboard online (solo + multi + server)
+      const pseudo = Player.getName();
+      if (pseudo) Leaderboard.submit(this.levelIndex, pseudo, this.elapsed);
+
+      if (this.conn && this.conn.open) {
+        try { this.conn.send({ type: 'finished', time: this.elapsed }); } catch (e) {}
+      }
+      if (this.mode === 'server' && ServerConn.connected) {
+        ServerConn.send({ type: 'finished', time: this.elapsed });
+      }
+
+      if (window.audio) {
+        window.audio.playFinish();
+        window.audio.stopEngine();
+      }
+
+      this.cameras.main.flash(300, 255, 255, 100);
+
+      // Mode serveur : auto-restart même map sans transition (le serveur gère la rotation)
+      if (this.mode === 'server') {
+        this.time.delayedCall(1500, () => {
+          if (this.time.now < this.challengeEndTime - 500 && !this.challengeEnded) {
+            this.scene.restart({
+              level: this.levelIndex,
+              mode: 'server',
+              currentMapIdx: this.serverState.existingPlayers ? this.serverState.currentMapIdx : this.levelIndex,
+              mapStartedAt: this.serverState.mapStartedAt,
+              mapDuration: this.serverState.mapDuration,
+              existingPlayers: Array.from(this.ghosts.entries()).map(([id, g]) => ({
+                id, pseudo: g.pseudo, sessionBest: g.sessionBest
+              })),
+              sessionBestTime: this.sessionBestTime,
+              runCount: this.runCount + 1
+            });
+          }
+          // Si plus de temps, on attend le mapEnd du serveur (event handler)
+        });
+        return;
+      }
+
+      // En mode challenge : auto-restart si encore du temps (solo + multi P2P)
+      if (this.challengeMode && this.challengeEndTime !== null) {
+        this.time.delayedCall(1500, () => {
+          if (this.time.now < this.challengeEndTime - 500) {
+            this.scene.restart({
+              level: this.levelIndex,
+              mode: this.mode,
+              conn: this.conn,
+              peer: this.peer,
+              challengeEndTime: this.challengeEndTime,
+              challengeEndAt: this.challengeEndAt,
+              sessionBestTime: this.sessionBestTime,
+              runCount: this.runCount + 1,
+              cachedTop: this.cachedTop,
+              peerPseudo: this.peerPseudo,
+              peerSessionBest: this.peerSessionBest,
+              mapSequence: this.mapSequence,
+              durationPerMap: this.durationPerMap,
+              currentMapIdx: this.currentMapIdx,
+              results: this.results
+            });
+          } else {
+            this.endChallenge();
+          }
+        });
+        return;
+      }
+
+      this.time.delayedCall(900, () => {
+        this.scene.pause();
+        this.scene.launch('GameOver', {
+          mode: 'win',
+          level: this.levelIndex,
+          time: this.elapsed,
+          newBest,
+          gameMode: this.mode,
+          opponentTime: this.opponentFinishTime,
+          conn: this.conn,
+          peer: this.peer
+        });
+      });
+    }
+  }
+
+  // ===========================================================
+  // SCÈNE GAME OVER (overlay)
+  // ===========================================================
+  class GameOverScene extends Phaser.Scene {
+    constructor() { super('GameOver'); }
+
+    init(data) {
+      this.gameOverMode = data.mode;
+      this.level = data.level;
+      this.gameTime = data.time;
+      this.newBest = data.newBest;
+      this.gameMode = data.gameMode;
+      this.opponentTime = data.opponentTime;
+      this.conn = data.conn;
+      this.peer = data.peer;
+    }
+
+    create() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+
+      this.add.rectangle(0, 0, w, h, 0x000000, 0.72).setOrigin(0).setScrollFactor(0);
+
+      const isCrash = this.gameOverMode === 'crash';
+      const isMulti = this.gameMode !== 'solo';
+
+      let title = isCrash ? 'CRASH !' : 'TERMINÉ !';
+      let titleColor = isCrash ? '#ff4444' : '#44ff66';
+
+      if (!isCrash && isMulti && this.opponentTime != null) {
+        if (this.gameTime < this.opponentTime) { title = '🏆 GAGNÉ !'; titleColor = '#ffdd44'; }
+        else { title = 'PERDU...'; titleColor = '#ff8844'; }
+      }
+
+      this.add.text(w / 2, h / 2 - 130, title, {
+        font: 'bold 64px sans-serif', color: titleColor,
+        stroke: '#000', strokeThickness: 6
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      if (!isCrash) {
+        this.add.text(w / 2, h / 2 - 50, this.gameTime.toFixed(2) + ' s', {
+          font: 'bold 56px monospace', color: '#ffffff',
+          stroke: '#000', strokeThickness: 4
+        }).setOrigin(0.5).setScrollFactor(0);
+
+        if (this.newBest) {
+          this.add.text(w / 2, h / 2 + 5, '★ NOUVEAU MEILLEUR TEMPS ★', {
+            font: 'bold 22px sans-serif', color: '#ffdd44',
+            stroke: '#000', strokeThickness: 3
+          }).setOrigin(0.5).setScrollFactor(0);
+        }
+
+        if (isMulti && this.opponentTime != null) {
+          this.add.text(w / 2, h / 2 + 40, 'adversaire : ' + this.opponentTime.toFixed(2) + ' s', {
+            font: '20px monospace', color: '#aaaaaa'
+          }).setOrigin(0.5).setScrollFactor(0);
+        } else if (isMulti) {
+          this.add.text(w / 2, h / 2 + 40, 'adversaire encore en course...', {
+            font: '18px sans-serif', color: '#aaaaaa'
+          }).setOrigin(0.5).setScrollFactor(0);
+        }
+      } else {
+        this.add.text(w / 2, h / 2 - 50, 'la moto a touché le sol', {
+          font: '20px sans-serif', color: '#cccccc'
+        }).setOrigin(0.5).setScrollFactor(0);
+      }
+
+      const yButtons = h / 2 + 130;
+
+      this.makeButton(w / 2 - 150, yButtons, 'Recommencer', () => {
+        this.scene.stop('Game');
+        this.scene.start('Game', {
+          level: this.level, mode: this.gameMode,
+          conn: this.conn, peer: this.peer
+        });
+      });
+
+      this.makeButton(w / 2 + 150, yButtons, 'Menu', () => {
+        if (this.peer) try { this.peer.destroy(); } catch (e) {}
+        this.scene.stop('Game');
+        this.scene.start('Menu');
+      });
+
+      if (!isCrash && this.gameMode === 'solo' && this.level < LEVELS.length - 1) {
+        this.makeButton(w / 2, yButtons + 60, 'Niveau suivant →', () => {
+          this.scene.stop('Game');
+          this.scene.start('Game', { level: this.level + 1, mode: 'solo' });
+        });
+      }
+    }
+
+    makeButton(x, y, text, onClick) {
+      const btn = this.add.text(x, y, text, {
+        font: 'bold 20px sans-serif',
+        color: '#ffffff',
+        backgroundColor: '#ff5533',
+        padding: { x: 22, y: 11 }
+      }).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#ff7755' }));
+      btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#ff5533' }));
+      btn.on('pointerdown', onClick);
+      return btn;
+    }
+  }
+
+  // ===========================================================
+  // SCÈNE FIN DE CHALLENGE 5 MIN (avec podium online)
+  // ===========================================================
+  class ChallengeEndScene extends Phaser.Scene {
+    constructor() { super('ChallengeEnd'); }
+
+    init(data) {
+      this.level = data.level;
+      this.sessionBest = data.sessionBest;
+      this.runCount = data.runCount;
+      this.cachedTop = data.cachedTop;
+      this.multiMode = data.multiMode || false;
+      this.myPseudo = data.myPseudo || '?';
+      this.peerPseudo = data.peerPseudo;
+      this.peerSessionBest = data.peerSessionBest !== undefined ? data.peerSessionBest : null;
+      this.peer = data.peer;
+      this.conn = data.conn;
+      // Séquence BO
+      this.mapSequence = data.mapSequence || [data.level];
+      this.durationPerMap = data.durationPerMap || 300;
+      this.currentMapIdx = data.currentMapIdx !== undefined ? data.currentMapIdx : 0;
+      this.results = data.results || [];
+      this.isLastMap = data.isLastMap !== undefined ? data.isLastMap : true;
+      this.gameMode = data.gameMode || 'solo';
+    }
+
+    async create() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+
+      this.add.rectangle(0, 0, w, h, 0x000000, 0.85).setOrigin(0).setScrollFactor(0);
+
+      // En multi : écoute le signal nextMap envoyé par le host
+      if (this.multiMode && this.conn) {
+        this.peerListener = (data) => {
+          if (data && data.type === 'nextMap') {
+            this.goToNextMap(data.challengeEndAt, data.peerSessionBest);
+          }
+        };
+        try { this.conn.on('data', this.peerListener); } catch (e) {}
+        this.events.on('shutdown', () => {
+          if (this.conn && this.peerListener) {
+            try { this.conn.off('data', this.peerListener); } catch (e) {}
+          }
+        });
+      }
+
+      const isHost = this.gameMode === 'multi-host';
+
+      if (!this.isLastMap) {
+        // ============== TRANSITION ENTRE 2 MAPS ==============
+        this.renderIntermediate(w, h, isHost);
+      } else if (this.mapSequence.length > 1) {
+        // ============== FIN DE BO (récap des maps) ==============
+        if (this.multiMode) this.renderBOMulti(w, h);
+        else this.renderBOSolo(w, h);
+      } else if (this.multiMode) {
+        // ============== MULTI 1 SEULE MAP ==============
+        this.renderMultiSingle(w, h);
+      } else {
+        // ============== SOLO 1 SEULE MAP : podium mondial ==============
+        await this.renderSoloSingle(w, h);
+      }
+    }
+
+    // -------------------- TRANSITION INTERMÉDIAIRE --------------------
+    renderIntermediate(w, h, isHost) {
+      const totalMaps = this.mapSequence.length;
+      const currentNum = this.currentMapIdx + 1;
+
+      this.add.text(w / 2, h / 2 - 220, `MAP ${currentNum} / ${totalMaps} TERMINÉE`, {
+        font: 'bold 44px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 5
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      this.add.text(w / 2, h / 2 - 175, LEVELS[this.level].name, {
+        font: '18px sans-serif', color: '#aaaaaa'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      // Score sur cette map
+      const myStr = this.sessionBest !== null ? this.sessionBest.toFixed(2) + 's' : 'DNF';
+      const peerStr = this.peerSessionBest !== null ? this.peerSessionBest.toFixed(2) + 's' : 'DNF';
+
+      if (this.multiMode) {
+        // Détermine vainqueur de cette map
+        let mapWinner = null;
+        if (this.sessionBest !== null && this.peerSessionBest !== null) {
+          mapWinner = this.sessionBest < this.peerSessionBest ? this.myPseudo : (this.peerPseudo || '?');
+        } else if (this.sessionBest !== null) mapWinner = this.myPseudo;
+        else if (this.peerSessionBest !== null) mapWinner = this.peerPseudo || '?';
+
+        if (mapWinner) {
+          const isMe = mapWinner === this.myPseudo;
+          this.add.text(w / 2, h / 2 - 110, '🏆 ' + mapWinner + ' a gagné cette map', {
+            font: 'bold 22px sans-serif',
+            color: isMe ? '#44ff66' : '#ff8844'
+          }).setOrigin(0.5).setScrollFactor(0);
+        } else {
+          this.add.text(w / 2, h / 2 - 110, 'aucun temps cette map', {
+            font: 'bold 18px sans-serif', color: '#ff8866'
+          }).setOrigin(0.5).setScrollFactor(0);
+        }
+
+        this.add.text(w / 2 - 130, h / 2 - 50, this.myPseudo + ' (toi)', {
+          font: 'bold 14px sans-serif', color: '#ffdd44'
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2 - 130, h / 2 - 22, myStr, {
+          font: 'bold 24px monospace', color: '#fff'
+        }).setOrigin(0.5).setScrollFactor(0);
+
+        this.add.text(w / 2 + 130, h / 2 - 50, this.peerPseudo || '?', {
+          font: 'bold 14px sans-serif', color: '#66ccff'
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2 + 130, h / 2 - 22, peerStr, {
+          font: 'bold 24px monospace', color: '#fff'
+        }).setOrigin(0.5).setScrollFactor(0);
+
+        this.add.text(w / 2, h / 2 - 35, 'vs', {
+          font: 'bold 18px sans-serif', color: '#666'
+        }).setOrigin(0.5).setScrollFactor(0);
+      } else {
+        this.add.text(w / 2, h / 2 - 100, 'ton meilleur temps :', {
+          font: '15px sans-serif', color: '#ccc'
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2, h / 2 - 60, myStr, {
+          font: 'bold 42px monospace', color: '#fff'
+        }).setOrigin(0.5).setScrollFactor(0);
+      }
+
+      // Score cumulé du BO
+      this.renderRunningTally(w, h / 2 + 20);
+
+      // Bouton selon rôle
+      const yBtn = h / 2 + 150;
+      if (this.multiMode && !isHost) {
+        // Guest : attente
+        this.add.text(w / 2, yBtn, '⏳  En attente du host...', {
+          font: 'bold 18px sans-serif', color: '#aaa'
+        }).setOrigin(0.5).setScrollFactor(0);
+      } else {
+        this.makeButton(w / 2, yBtn, 'Map suivante  →', () => {
+          this.startNextMap();
+        });
+      }
+    }
+
+    renderRunningTally(w, y) {
+      // Affiche les scores des maps déjà jouées (toutes incluses car on est appelé après save)
+      const lineY = y;
+      this.add.text(w / 2, lineY, 'BILAN EN COURS', {
+        font: 'bold 12px sans-serif', color: '#ffaa44'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      this.results.forEach((r, i) => {
+        const lvl = LEVELS[r.mapIndex];
+        const myStr = r.mySessionBest !== null ? r.mySessionBest.toFixed(2) + 's' : 'DNF';
+        let line = `${i + 1}. ${lvl.name}  —  ${myStr}`;
+        let color = '#fff';
+        if (this.multiMode) {
+          const peerStr = r.peerSessionBest !== null ? r.peerSessionBest.toFixed(2) + 's' : 'DNF';
+          line = `${i + 1}. ${lvl.name}  ·  ${this.myPseudo}: ${myStr}  ·  ${this.peerPseudo || '?'}: ${peerStr}`;
+          // Mark winner of this map
+          if (r.mySessionBest !== null && (r.peerSessionBest === null || r.mySessionBest < r.peerSessionBest)) color = '#44ff66';
+          else if (r.peerSessionBest !== null && (r.mySessionBest === null || r.peerSessionBest < r.mySessionBest)) color = '#ff8844';
+          else color = '#aaa';
+        }
+        this.add.text(w / 2, lineY + 22 + i * 20, line, {
+          font: 'bold 12px monospace', color
+        }).setOrigin(0.5).setScrollFactor(0);
+      });
+    }
+
+    startNextMap() {
+      const nextIdx = this.currentMapIdx + 1;
+      const nextLevel = this.mapSequence[nextIdx];
+      const challengeEndAt = Date.now() + 3000 + this.durationPerMap * 1000;
+
+      if (this.multiMode && this.conn && this.conn.open) {
+        try {
+          this.conn.send({
+            type: 'nextMap',
+            challengeEndAt,
+            peerSessionBest: this.sessionBest // ce que MOI j'ai fait sur la map qui vient de finir, du POV du peer c'est SON best
+          });
+        } catch (e) {}
+      }
+      this.transitionToMap(nextIdx, nextLevel, challengeEndAt);
+    }
+
+    goToNextMap(challengeEndAt, peerBestForLastMap) {
+      // Le host vient d'envoyer nextMap. Le peer's "peerSessionBest" reçu est en fait son best sur la map qui vient de finir.
+      // On l'ajoute aux derniers résultats si c'est une donnée fraîche.
+      if (peerBestForLastMap !== undefined && this.results.length > 0) {
+        const last = this.results[this.results.length - 1];
+        if (last.peerSessionBest === null
+            || (peerBestForLastMap !== null && peerBestForLastMap < last.peerSessionBest)) {
+          last.peerSessionBest = peerBestForLastMap;
+        }
+      }
+      const nextIdx = this.currentMapIdx + 1;
+      const nextLevel = this.mapSequence[nextIdx];
+      this.transitionToMap(nextIdx, nextLevel, challengeEndAt);
+    }
+
+    transitionToMap(nextIdx, nextLevel, challengeEndAt) {
+      this.scene.stop('Game');
+      this.scene.start('Game', {
+        level: nextLevel,
+        mode: this.gameMode,
+        conn: this.conn,
+        peer: this.peer,
+        challengeEndAt: this.multiMode ? challengeEndAt : null,
+        peerPseudo: this.peerPseudo,
+        peerSessionBest: null,           // reset pour la nouvelle map
+        mapSequence: this.mapSequence,
+        durationPerMap: this.durationPerMap,
+        currentMapIdx: nextIdx,
+        results: this.results
+      });
+    }
+
+    // -------------------- BO FINAL (plusieurs maps terminées) --------------------
+    renderBOMulti(w, h) {
+      const total = this.mapSequence.length;
+      let myWins = 0, peerWins = 0;
+      this.results.forEach(r => {
+        if (r.mySessionBest !== null && (r.peerSessionBest === null || r.mySessionBest < r.peerSessionBest)) myWins++;
+        else if (r.peerSessionBest !== null && (r.mySessionBest === null || r.peerSessionBest < r.mySessionBest)) peerWins++;
+      });
+
+      const winner = myWins > peerWins ? this.myPseudo
+        : peerWins > myWins ? (this.peerPseudo || '?')
+        : null;
+
+      this.add.text(w / 2, h / 2 - 240, `BO${total} TERMINÉ`, {
+        font: 'bold 50px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 6
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      if (winner) {
+        const isMe = winner === this.myPseudo;
+        this.add.text(w / 2, h / 2 - 178, '🏆  VAINQUEUR  🏆', {
+          font: 'bold 18px sans-serif', color: '#ffdd44'
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2, h / 2 - 130, winner, {
+          font: 'bold 56px sans-serif',
+          color: isMe ? '#44ff66' : '#ff8844',
+          stroke: '#000', strokeThickness: 6
+        }).setOrigin(0.5).setScrollFactor(0);
+      } else {
+        this.add.text(w / 2, h / 2 - 130, 'ÉGALITÉ', {
+          font: 'bold 50px sans-serif', color: '#ff8866',
+          stroke: '#000', strokeThickness: 6
+        }).setOrigin(0.5).setScrollFactor(0);
+      }
+
+      this.add.text(w / 2, h / 2 - 70, `${myWins}  —  ${peerWins}`, {
+        font: 'bold 32px monospace',
+        color: '#fff',
+        stroke: '#000', strokeThickness: 4
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      // Détail par map
+      this.results.forEach((r, i) => {
+        const lvl = LEVELS[r.mapIndex];
+        const myStr = r.mySessionBest !== null ? r.mySessionBest.toFixed(2) + 's' : 'DNF';
+        const peerStr = r.peerSessionBest !== null ? r.peerSessionBest.toFixed(2) + 's' : 'DNF';
+        let icon = '·';
+        if (r.mySessionBest !== null && (r.peerSessionBest === null || r.mySessionBest < r.peerSessionBest)) icon = '✓';
+        else if (r.peerSessionBest !== null && (r.mySessionBest === null || r.peerSessionBest < r.mySessionBest)) icon = '✗';
+        this.add.text(w / 2, h / 2 - 30 + i * 26,
+          `${icon}  ${lvl.name}  ·  ${this.myPseudo}: ${myStr}  ·  ${this.peerPseudo || '?'}: ${peerStr}`,
+          {
+            font: 'bold 13px monospace',
+            color: icon === '✓' ? '#44ff66' : (icon === '✗' ? '#ff8844' : '#aaa')
+          }
+        ).setOrigin(0.5).setScrollFactor(0);
+      });
+
+      this.makeButton(w / 2, h / 2 + 170, 'Retour menu', () => {
+        if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+        this.scene.stop('Game');
+        this.scene.start('Menu');
+      });
+    }
+
+    renderBOSolo(w, h) {
+      const total = this.mapSequence.length;
+      const finishedMaps = this.results.filter(r => r.mySessionBest !== null).length;
+
+      this.add.text(w / 2, h / 2 - 240, `BO${total} TERMINÉ`, {
+        font: 'bold 50px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 6
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      this.add.text(w / 2, h / 2 - 180, `${finishedMaps} / ${total} maps terminées`, {
+        font: '18px sans-serif', color: '#aaa'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      // Récap par map
+      let totalTime = 0;
+      let totalRuns = 0;
+      this.results.forEach((r, i) => {
+        const lvl = LEVELS[r.mapIndex];
+        const myStr = r.mySessionBest !== null ? r.mySessionBest.toFixed(2) + 's' : 'DNF';
+        if (r.mySessionBest !== null) totalTime += r.mySessionBest;
+        totalRuns += r.runCount || 0;
+        const color = r.mySessionBest !== null ? '#fff' : '#ff8866';
+        this.add.text(w / 2, h / 2 - 130 + i * 28,
+          `${i + 1}. ${lvl.name}  —  ${myStr}`,
+          { font: 'bold 16px monospace', color }
+        ).setOrigin(0.5).setScrollFactor(0);
+      });
+
+      // Cumul si tous finis
+      if (finishedMaps === total) {
+        this.add.text(w / 2, h / 2 + 30, `temps cumulé : ${totalTime.toFixed(2)} s`, {
+          font: 'bold 20px monospace', color: '#ffdd44'
+        }).setOrigin(0.5).setScrollFactor(0);
+      }
+      this.add.text(w / 2, h / 2 + 60, `${totalRuns} runs au total`, {
+        font: '13px sans-serif', color: '#888'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      const yBtn = h / 2 + 170;
+      this.makeButton(w / 2 - 130, yBtn, 'Rejouer', () => {
+        this.scene.stop('Game');
+        this.scene.start('Game', {
+          level: this.mapSequence[0],
+          mode: 'solo',
+          mapSequence: this.mapSequence,
+          durationPerMap: this.durationPerMap,
+          currentMapIdx: 0,
+          results: []
+        });
+      });
+      this.makeButton(w / 2 + 130, yBtn, 'Menu', () => {
+        this.scene.stop('Game');
+        this.scene.start('Menu');
+      });
+    }
+
+    // -------------------- 1 SEULE MAP (cas legacy) --------------------
+    renderMultiSingle(w, h) {
+      this.add.text(w / 2, h / 2 - 240, 'TEMPS ÉCOULÉ', {
+        font: 'bold 56px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 6
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      this.add.text(w / 2, h / 2 - 188, LEVELS[this.level].name + ' — multi', {
+        font: '18px sans-serif', color: '#aaaaaa'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      let winner = null, winnerTime = null;
+      if (this.sessionBest !== null && this.peerSessionBest !== null) {
+        if (this.sessionBest < this.peerSessionBest) { winner = this.myPseudo; winnerTime = this.sessionBest; }
+        else { winner = this.peerPseudo || '?'; winnerTime = this.peerSessionBest; }
+      } else if (this.sessionBest !== null) { winner = this.myPseudo; winnerTime = this.sessionBest; }
+      else if (this.peerSessionBest !== null) { winner = this.peerPseudo || '?'; winnerTime = this.peerSessionBest; }
+
+      if (winner) {
+        const isMe = winner === this.myPseudo;
+        this.add.text(w / 2, h / 2 - 138, '🏆  VAINQUEUR  🏆', {
+          font: 'bold 18px sans-serif', color: '#ffdd44'
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2, h / 2 - 92, winner, {
+          font: 'bold 56px sans-serif',
+          color: isMe ? '#44ff66' : '#ff8844',
+          stroke: '#000', strokeThickness: 6
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2, h / 2 - 45, winnerTime.toFixed(2) + ' s', {
+          font: 'bold 22px monospace', color: '#fff'
+        }).setOrigin(0.5).setScrollFactor(0);
+      } else {
+        this.add.text(w / 2, h / 2 - 110, 'égalité, personne n\'a fini', {
+          font: 'bold 24px sans-serif', color: '#ff8866'
+        }).setOrigin(0.5).setScrollFactor(0);
+      }
+
+      const myStr = this.sessionBest !== null ? this.sessionBest.toFixed(2) + 's' : 'DNF';
+      const peerStr = this.peerSessionBest !== null ? this.peerSessionBest.toFixed(2) + 's' : 'DNF';
+      this.add.text(w / 2 - 140, h / 2 + 20, this.myPseudo + ' (toi)', {
+        font: 'bold 16px sans-serif', color: '#ffdd44'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.add.text(w / 2 - 140, h / 2 + 50, myStr, {
+        font: 'bold 26px monospace', color: '#fff'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.add.text(w / 2 + 140, h / 2 + 20, this.peerPseudo || '?', {
+        font: 'bold 16px sans-serif', color: '#66ccff'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.add.text(w / 2 + 140, h / 2 + 50, peerStr, {
+        font: 'bold 26px monospace', color: '#fff'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.add.text(w / 2, h / 2 + 35, 'vs', {
+        font: 'bold 22px sans-serif', color: '#666'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      this.makeButton(w / 2, h / 2 + 130, 'Retour menu', () => {
+        if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+        this.scene.stop('Game');
+        this.scene.start('Menu');
+      });
+    }
+
+    async renderSoloSingle(w, h) {
+      this.add.text(w / 2, h / 2 - 240, 'TEMPS ÉCOULÉ', {
+        font: 'bold 56px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 6
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      this.add.text(w / 2, h / 2 - 188, LEVELS[this.level].name, {
+        font: '18px sans-serif', color: '#aaaaaa'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      if (this.sessionBest !== null) {
+        this.add.text(w / 2, h / 2 - 138, 'ton meilleur temps :', {
+          font: '15px sans-serif', color: '#cccccc'
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2, h / 2 - 100, this.sessionBest.toFixed(2) + ' s', {
+          font: 'bold 48px monospace',
+          color: '#ffffff',
+          stroke: '#000', strokeThickness: 4
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2, h / 2 - 60, this.runCount + ' run' + (this.runCount > 1 ? 's' : ''), {
+          font: '13px sans-serif', color: '#888'
+        }).setOrigin(0.5).setScrollFactor(0);
+      } else {
+        this.add.text(w / 2, h / 2 - 110, 'aucun temps réalisé', {
+          font: 'bold 26px sans-serif', color: '#ff8866'
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2, h / 2 - 75, this.runCount + ' tentative' + (this.runCount > 1 ? 's' : ''), {
+          font: '13px sans-serif', color: '#888'
+        }).setOrigin(0.5).setScrollFactor(0);
+      }
+
+      this.add.text(w / 2, h / 2 - 10, '🏆  PODIUM MONDIAL  🏆', {
+        font: 'bold 17px sans-serif', color: '#ffdd44',
+        stroke: '#000', strokeThickness: 2
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      this.podiumLabels = [];
+      const colors = ['#ffdd44', '#cccccc', '#cd7f32'];
+      for (let i = 0; i < 3; i++) {
+        const t = this.add.text(w / 2, h / 2 + 25 + i * 30, '...', {
+          font: 'bold 19px monospace',
+          color: colors[i],
+          stroke: '#000', strokeThickness: 2
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.podiumLabels.push(t);
+      }
+
+      const top = await Leaderboard.top(this.level, 3);
+      if (top && top.length > 0) {
+        const medals = ['🥇', '🥈', '🥉'];
+        const myName = Player.getName();
+        for (let i = 0; i < 3; i++) {
+          if (top[i]) {
+            const isMe = top[i].pseudo === myName;
+            this.podiumLabels[i].setText(`${medals[i]}  ${top[i].pseudo}  —  ${parseFloat(top[i].time).toFixed(2)}s`);
+            if (isMe) this.podiumLabels[i].setColor('#ff8833');
+          } else {
+            this.podiumLabels[i].setText('—');
+          }
+        }
+      } else {
+        this.podiumLabels[0].setText(Leaderboard.isConfigured() ? 'aucun score enregistré' : '(leaderboard non configuré)');
+        this.podiumLabels[1].setVisible(false);
+        this.podiumLabels[2].setVisible(false);
+      }
+
+      const yBtn = h / 2 + 170;
+      this.makeButton(w / 2 - 130, yBtn, 'Rejouer', () => {
+        this.scene.stop('Game');
+        this.scene.start('Game', {
+          level: this.level,
+          mode: 'solo',
+          mapSequence: [this.level],
+          durationPerMap: this.durationPerMap
+        });
+      });
+      this.makeButton(w / 2 + 130, yBtn, 'Menu', () => {
+        this.scene.stop('Game');
+        this.scene.start('Menu');
+      });
+    }
+
+    makeButton(x, y, text, onClick) {
+      const btn = this.add.text(x, y, text, {
+        font: 'bold 20px sans-serif',
+        color: '#ffffff',
+        backgroundColor: '#ff5533',
+        padding: { x: 22, y: 11 }
+      }).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#ff7755' }));
+      btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#ff5533' }));
+      btn.on('pointerdown', onClick);
+      return btn;
+    }
+  }
+
+  // ===========================================================
+  // CONFIG PHASER
+  // ===========================================================
+  const config = {
+    type: Phaser.AUTO,
+    parent: 'game',
+    width: window.innerWidth,
+    height: window.innerHeight,
+    scale: {
+      mode: Phaser.Scale.RESIZE,
+      autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    physics: {
+      default: 'matter',
+      matter: {
+        gravity: { y: 1 },
+        debug: false
+      }
+    },
+    scene: [MenuScene, HelpScene, GameSetupScene, MultiScene, ServerRoomScene, GameScene, GameOverScene, ChallengeEndScene]
+  };
+
+  const game = new Phaser.Game(config);
+  </script>
+</body>
+</html>
