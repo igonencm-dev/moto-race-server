@@ -993,6 +993,7 @@
         ['←', 'freiner / reculer'],
         ['↑', 'pencher en arrière (BACKFLIP en l\'air)'],
         ['↓', 'pencher en avant'],
+        ['ESPACE', 'BOOST (1x par essai)'],
         ['', ''],
         ['R', 'recommencer la course'],
         ['ÉCHAP', 'retour menu'],
@@ -1763,7 +1764,7 @@
       this.cameras.main.setBounds(-300, -1000, level.finishX + 700, 2200);
       this.cameras.main.startFollow(this.followTarget, false, 0.12, 0.1);
 
-      // Inputs (flèches + ZQSD + WASD)
+      // Inputs (flèches + ZQSD + WASD + ESPACE pour boost)
       this.cursors = this.input.keyboard.createCursorKeys();
       this.keyW = this.input.keyboard.addKey('W');
       this.keyA = this.input.keyboard.addKey('A');
@@ -1771,6 +1772,12 @@
       this.keyD = this.input.keyboard.addKey('D');
       this.keyZ = this.input.keyboard.addKey('Z');
       this.keyQ = this.input.keyboard.addKey('Q');
+      this.input.keyboard.on('keydown-SPACE', () => this.tryBoost());
+
+      // État boost (1 utilisation par essai)
+      this.boostUsed = false;
+      this.boostActive = false;
+      this.boostEndsAt = 0;
       this.input.keyboard.on('keydown-R', () => {
         this.scene.restart();
       });
@@ -1823,7 +1830,7 @@
       const hudCol = 0x0a0e1a, hudAlpha = 0.78;
 
       // ─── Panel JOUEUR (haut gauche) ───
-      const lpW = 230, lpH = 158, lpX = 14, lpY = 14;
+      const lpW = 230, lpH = 182, lpX = 14, lpY = 14;
       const leftPanel = this.add.graphics().setScrollFactor(0);
       leftPanel.fillStyle(hudCol, hudAlpha);
       leftPanel.fillRoundedRect(lpX, lpY, lpW, lpH, 12);
@@ -1862,6 +1869,12 @@
       this.bestText = this.add.text(lpX + 14, lpY + 124, bestStr, {
         font: 'bold 12px monospace',
         color: '#ffaa66'
+      }).setScrollFactor(0);
+
+      // Indicateur boost (1x par essai)
+      this.boostText = this.add.text(lpX + 14, lpY + 152, '🚀  boost  [ESPACE]', {
+        font: 'bold 12px monospace',
+        color: '#66ddff'
       }).setScrollFactor(0);
 
       // ─── Panel CHALLENGE (haut centre) ───
@@ -1954,7 +1967,7 @@
 
       // ─── Help discret en bas ───
       this.helpText = this.add.text(scrW / 2, scrH - 18,
-        '←→  pilote      ↑↓  penche       R  recommencer       ÉCHAP  menu', {
+        '←→  pilote     ↑↓  penche     ESPACE  boost     R  recommencer     ÉCHAP  menu', {
         font: 'bold 11px sans-serif',
         color: '#dddddd',
         backgroundColor: '#000a',
@@ -2377,6 +2390,19 @@
         this.countdownText.setVisible(false);
       }
 
+      // === Boost actif : pulse de force pendant 0.6s ===
+      if (this.boostActive) {
+        if (time >= this.boostEndsAt) {
+          this.boostActive = false;
+        } else if (!this.crashed && !this.finished) {
+          const a = this.bike.chassis.angle;
+          Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
+            x: Math.cos(a) * 0.0035,
+            y: Math.sin(a) * 0.0035
+          });
+        }
+      }
+
       // === Inputs (flèches + ZQSD/WASD) ===
       if (!this.crashed && !this.finished) {
         const accel = this.cursors.right.isDown || this.keyD.isDown;
@@ -2561,6 +2587,29 @@
         msg.text.setAlpha(Math.min(1, msg.life * 1.4));
         return true;
       });
+    }
+
+    tryBoost() {
+      if (this.boostUsed || this.crashed || this.finished || this.startTime === null) return;
+      this.boostUsed = true;
+      this.boostActive = true;
+      this.boostEndsAt = this.time.now + 600; // 0.6s de pulse
+      // Petit kick instantané pour la sensation
+      const a = this.bike.chassis.angle;
+      const v = this.bike.chassis.velocity;
+      Matter.Body.setVelocity(this.bike.chassis, {
+        x: v.x + Math.cos(a) * 3,
+        y: v.y + Math.sin(a) * 3
+      });
+      // Feedback visuel + sonore
+      this.cameras.main.flash(120, 200, 220, 255);
+      this.showFloatingText('🚀 BOOST !', '#66ddff');
+      if (window.audio) window.audio.playFlip();
+      // Update HUD
+      if (this.boostText) {
+        this.boostText.setText('🚀  boost utilisé');
+        this.boostText.setColor('#666');
+      }
     }
 
     showFloatingText(content, color) {
