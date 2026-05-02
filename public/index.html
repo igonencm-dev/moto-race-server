@@ -370,6 +370,126 @@
       obstacles: [],
       finishX: 7000,
       bikeStartY: 340
+    },
+    {
+      name: 'Niveau 12 — Glace',
+      friction: 0.05, // ✨ glace : ça glisse !
+      terrain: [
+        { x: -200, y: 400 }, { x: 400, y: 400 },
+        // ondulations glissantes
+        { x: 600, y: 380 },
+        { x: 800, y: 420 },
+        { x: 1000, y: 380 },
+        { x: 1200, y: 420 },
+        { x: 1400, y: 400 },
+        // descente légère (la glace t'emporte)
+        { x: 1700, y: 440 },
+        { x: 2000, y: 460 },
+        { x: 2400, y: 460 },
+        // remontée douce
+        { x: 2700, y: 420 },
+        { x: 3000, y: 380 },
+        { x: 3200, y: 350 },
+        // rampe glacée
+        { x: 3400, y: 290 },
+        { x: 3600, y: 220 },
+        // gap (ça vole sur la glace)
+        { x: 4400, y: 420 },
+        // descente finale lisse
+        { x: 4700, y: 460 },
+        { x: 5100, y: 460 },
+        { x: 5500, y: 460 }
+      ],
+      obstacles: [],
+      finishX: 5500,
+      bikeStartY: 340
+    },
+    {
+      name: 'Niveau 13 — Mario',
+      terrain: [
+        { x: -200, y: 460 }, { x: 350, y: 460 },
+        // 1ère marche basse
+        { x: 410, y: 430 },
+        { x: 460, y: 400 },
+        { x: 700, y: 400 },
+        { x: 750, y: 430 },
+        { x: 810, y: 460 },
+        // gap
+        { x: 950, y: 460 },
+        // marche moyenne
+        { x: 1010, y: 410 },
+        { x: 1060, y: 360 },
+        { x: 1110, y: 320 },
+        { x: 1380, y: 320 },
+        { x: 1430, y: 360 },
+        { x: 1480, y: 410 },
+        { x: 1540, y: 460 },
+        // gap
+        { x: 1680, y: 460 },
+        // marche haute (saut tactique)
+        { x: 1750, y: 410 },
+        { x: 1810, y: 350 },
+        { x: 1870, y: 280 },
+        { x: 1930, y: 220 },
+        { x: 2150, y: 220 },
+        { x: 2210, y: 280 },
+        { x: 2270, y: 350 },
+        { x: 2330, y: 410 },
+        { x: 2400, y: 460 },
+        // plat
+        { x: 2600, y: 460 },
+        // grande rampe finale style "flag"
+        { x: 2700, y: 430 },
+        { x: 2800, y: 380 },
+        { x: 2900, y: 310 },
+        { x: 3000, y: 220 },
+        { x: 3100, y: 100 },
+        // gros gap finale
+        { x: 4000, y: 460 },
+        { x: 4500, y: 460 }
+      ],
+      obstacles: [],
+      finishX: 4500,
+      bikeStartY: 400
+    },
+    {
+      name: 'Niveau 14 — Espace Infini',
+      terrain: [
+        { x: -200, y: 400 }, { x: 500, y: 400 },
+        // longue ascension douce vers le ciel
+        { x: 700, y: 360 },
+        { x: 900, y: 310 },
+        { x: 1100, y: 250 },
+        { x: 1300, y: 180 },
+        { x: 1500, y: 120 },
+        // plateau spatial
+        { x: 1800, y: 120 },
+        // descente fluide
+        { x: 2000, y: 180 },
+        { x: 2200, y: 260 },
+        { x: 2400, y: 340 },
+        { x: 2600, y: 400 },
+        // ondulations spatiales (zero-G feel)
+        { x: 2800, y: 380 },
+        { x: 3000, y: 360 },
+        { x: 3200, y: 380 },
+        { x: 3400, y: 400 },
+        // rampe interstellaire
+        { x: 3600, y: 380 },
+        { x: 3800, y: 340 },
+        { x: 4000, y: 280 },
+        { x: 4200, y: 200 },
+        { x: 4400, y: 100 },
+        { x: 4600, y: 0 },
+        { x: 4800, y: -100 },
+        // gap énorme (vol stellaire)
+        { x: 6500, y: 420 },
+        { x: 7000, y: 420 },
+        { x: 7500, y: 420 }
+      ],
+      obstacles: [],
+      finishX: 7500,
+      bikeStartY: 340
     }
   ];
 
@@ -2147,6 +2267,8 @@
     }
 
     buildTerrain(points) {
+      const level = LEVELS[this.levelIndex];
+      const terrainFriction = (level && level.friction !== undefined) ? level.friction : 0.9;
       // Bodies physiques (rectangles inclinés entre points)
       for (let i = 0; i < points.length - 1; i++) {
         const p1 = points[i];
@@ -2163,7 +2285,7 @@
           isStatic: true,
           angle,
           label: 'terrain',
-          friction: 0.9,
+          friction: terrainFriction,
           chamfer: { radius: 0 }
         });
       }
