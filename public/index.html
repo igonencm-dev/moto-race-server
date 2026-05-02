@@ -2919,11 +2919,13 @@
       this.followTarget.x = this.bike.chassis.position.x + lookAhead;
       this.followTarget.y = this.bike.chassis.position.y - 60;
 
-      // === Timer ===
+      // === Timer === (peut aller en négatif grâce aux flips bonus)
       if (!this.finished && !this.crashed && this.startTime !== null) {
-        this.elapsed = Math.max(0, (time - this.startTime) / 1000 - this.flipBonus);
+        this.elapsed = (time - this.startTime) / 1000 - this.flipBonus;
       }
       this.timerText.setText(this.elapsed.toFixed(2));
+      // Timer en vert quand négatif (record incroyable grâce aux flips)
+      this.timerText.setColor(this.elapsed < 0 ? '#44ff66' : '#ffffff');
       if (this.flipBonus > 0) {
         this.bonusText.setText('-' + this.flipBonus.toFixed(0) + 's bonus');
       }
