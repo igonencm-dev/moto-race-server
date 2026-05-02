@@ -1133,10 +1133,11 @@
       this.drawDecoBike(w/2, h/2 - 50);
 
       // Boutons
-      this.makeButton(w/2, h/2 + 30, 'SOLO', () => this.scene.start('GameSetup'));
-      this.makeButton(w/2, h/2 + 85, '🌍 SALON EN LIGNE', () => this.scene.start('ServerRoom'));
-      this.makeButton(w/2, h/2 + 140, 'MULTI 1V1 (P2P)', () => this.scene.start('Multi'));
-      this.makeButton(w/2, h/2 + 195, 'COMMANDES', () => this.scene.start('Help'));
+      this.makeButton(w/2, h/2 + 20, 'SOLO', () => this.scene.start('GameSetup'));
+      this.makeButton(w/2, h/2 + 75, '🌍 SALON EN LIGNE', () => this.scene.start('ServerRoom'));
+      this.makeButton(w/2, h/2 + 130, '🏆 CLASSEMENT', () => this.scene.start('Leaderboard'));
+      this.makeButton(w/2, h/2 + 185, 'MULTI 1V1 (P2P)', () => this.scene.start('Multi'));
+      this.makeButton(w/2, h/2 + 240, 'COMMANDES', () => this.scene.start('Help'));
 
       this.add.text(w/2, h - 30, 'fait avec Phaser 3 + Matter.js + WebRTC', {
         font: '11px sans-serif',
@@ -1281,6 +1282,179 @@
       back.on('pointerdown', () => this.scene.start('Menu'));
       back.on('pointerover', () => back.setStyle({ backgroundColor: '#666' }));
       back.on('pointerout', () => back.setStyle({ backgroundColor: '#444' }));
+    }
+  }
+
+  // ===========================================================
+  // SCÈNE CLASSEMENT (top 10 par map, depuis Supabase)
+  // ===========================================================
+  class LeaderboardScene extends Phaser.Scene {
+    constructor() { super('Leaderboard'); }
+
+    create() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.cameras.main.setBackgroundColor('#1a2030');
+
+      this.add.text(w / 2, 50, '🏆  CLASSEMENT MONDIAL  🏆', {
+        font: 'bold 36px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 4
+      }).setOrigin(0.5);
+
+      this.add.text(w / 2, 88, 'meilleurs temps mondiaux par niveau', {
+        font: '13px sans-serif', color: '#aaa'
+      }).setOrigin(0.5);
+
+      // Pseudo en haut à droite
+      const pseudo = Player.getName();
+      if (pseudo) {
+        this.add.text(w - 20, 24, '👤 ' + pseudo, {
+          font: 'bold 14px sans-serif',
+          color: '#ffdd44',
+          backgroundColor: '#222a3a',
+          padding: { x: 12, y: 6 }
+        }).setOrigin(1, 0);
+      }
+
+      // Bouton retour menu
+      const back = this.add.text(20, 20, '← Menu', {
+        font: 'bold 14px sans-serif',
+        color: '#aaa',
+        backgroundColor: '#333',
+        padding: { x: 14, y: 8 }
+      }).setInteractive({ useHandCursor: true });
+      back.on('pointerdown', () => this.scene.start('Menu'));
+
+      // Boutons de sélection de map (grille)
+      const cols = 6;
+      const btnW = Math.min(95, (w - 80) / cols);
+      const btnH = 38;
+      const gap = 8;
+      const totalW = cols * btnW + (cols - 1) * gap;
+      const startX = (w - totalW) / 2;
+      const startY = 130;
+
+      this.mapButtons = [];
+      LEVELS.forEach((level, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const x = startX + col * (btnW + gap);
+        const y = startY + row * (btnH + gap);
+        const btn = this.add.text(x + btnW / 2, y + btnH / 2, 'N°' + (i + 1), {
+          font: 'bold 14px sans-serif',
+          color: '#fff',
+          backgroundColor: '#444',
+          padding: { x: 10, y: 6 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        btn.on('pointerdown', () => this.selectMap(i));
+        this.mapButtons.push(btn);
+      });
+
+      // Nom de la map sélectionnée
+      const rowsCount = Math.ceil(LEVELS.length / cols);
+      const afterButtonsY = startY + rowsCount * (btnH + gap) + 20;
+      this.mapNameText = this.add.text(w / 2, afterButtonsY, '', {
+        font: 'bold 24px sans-serif',
+        color: '#ffaa66',
+        stroke: '#000', strokeThickness: 3
+      }).setOrigin(0.5);
+
+      this.scoresStartY = afterButtonsY + 40;
+      this.scoreTexts = [];
+
+      this.selectedMap = 0;
+      this.selectMap(0);
+    }
+
+    selectMap(idx) {
+      this.selectedMap = idx;
+      this.mapButtons.forEach((btn, i) => {
+        btn.setStyle({
+          backgroundColor: i === idx ? '#ff5533' : '#444',
+          color: i === idx ? '#fff' : '#ccc'
+        });
+      });
+      this.mapNameText.setText(LEVELS[idx].name);
+      this.loadScores(idx);
+    }
+
+    async loadScores(idx) {
+      // Clear ancien
+      this.scoreTexts.forEach(t => t.destroy());
+      this.scoreTexts = [];
+
+      const w = this.scale.width;
+      const loading = this.add.text(w / 2, this.scoresStartY + 50, 'chargement...', {
+        font: '15px sans-serif', color: '#aaa'
+      }).setOrigin(0.5);
+      this.scoreTexts.push(loading);
+
+      const top = await Leaderboard.top(idx, 10);
+      // Si on a changé de map entre temps, ignore
+      if (this.selectedMap !== idx) return;
+
+      this.scoreTexts.forEach(t => t.destroy());
+      this.scoreTexts = [];
+
+      if (!Leaderboard.isConfigured()) {
+        const t = this.add.text(w / 2, this.scoresStartY + 50, '(leaderboard non configuré)', {
+          font: '14px sans-serif', color: '#666'
+        }).setOrigin(0.5);
+        this.scoreTexts.push(t);
+        return;
+      }
+
+      if (!top || top.length === 0) {
+        const t = this.add.text(w / 2, this.scoresStartY + 50, 'aucun score sur ce niveau — sois le premier !', {
+          font: 'bold 16px sans-serif', color: '#ff8866'
+        }).setOrigin(0.5);
+        this.scoreTexts.push(t);
+        return;
+      }
+
+      const myName = Player.getName();
+      const medals = ['🥇', '🥈', '🥉'];
+      const colors = ['#ffdd44', '#cccccc', '#cd7f32'];
+
+      top.forEach((s, i) => {
+        const isMe = s.pseudo === myName;
+        const rank = i < 3 ? medals[i] : `#${i + 1}`;
+        const txt = `${rank}   ${s.pseudo}   —   ${parseFloat(s.time).toFixed(2)}s`;
+        const color = isMe ? '#ff8833' : (i < 3 ? colors[i] : '#fff');
+        const t = this.add.text(w / 2, this.scoresStartY + i * 28, txt, {
+          font: 'bold 17px monospace',
+          color,
+          stroke: '#000', strokeThickness: 2
+        }).setOrigin(0.5);
+        this.scoreTexts.push(t);
+      });
+
+      // Si le user n'est pas dans le top 10, montre son rang séparément
+      if (myName && !top.some(s => s.pseudo === myName)) {
+        // Fetch tous les scores du level pour trouver le rang
+        const ranking = await Leaderboard.top(idx, 100);
+        if (this.selectedMap !== idx) return;
+        // Pour chaque pseudo, garder le meilleur temps
+        const bestByPseudo = {};
+        for (const s of ranking) {
+          if (!bestByPseudo[s.pseudo] || parseFloat(s.time) < parseFloat(bestByPseudo[s.pseudo].time)) {
+            bestByPseudo[s.pseudo] = s;
+          }
+        }
+        const sorted = Object.values(bestByPseudo).sort((a, b) => parseFloat(a.time) - parseFloat(b.time));
+        const myRank = sorted.findIndex(s => s.pseudo === myName);
+        if (myRank >= 0) {
+          const me = sorted[myRank];
+          const t = this.add.text(w / 2, this.scoresStartY + 11 * 28 + 12,
+            `…   #${myRank + 1}   ${myName}   —   ${parseFloat(me.time).toFixed(2)}s`, {
+            font: 'bold 16px monospace',
+            color: '#ff8833',
+            stroke: '#000', strokeThickness: 2
+          }).setOrigin(0.5);
+          this.scoreTexts.push(t);
+        }
+      }
     }
   }
 
@@ -4135,7 +4309,7 @@
         debug: false
       }
     },
-    scene: [MenuScene, HelpScene, GameSetupScene, MultiScene, ServerRoomScene, GameScene, GameOverScene, ChallengeEndScene]
+    scene: [MenuScene, HelpScene, GameSetupScene, MultiScene, ServerRoomScene, LeaderboardScene, GameScene, GameOverScene, ChallengeEndScene]
   };
 
   const game = new Phaser.Game(config);
