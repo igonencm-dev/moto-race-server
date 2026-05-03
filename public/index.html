@@ -939,6 +939,124 @@
       obstacles: [],
       finishX: 6500,
       bikeStartY: 140
+    },
+    // ============== TIER 2 ==============
+    {
+      tier: 2,
+      name: 'Vallée',
+      terrain: [
+        // Étage haut, on roule à droite
+        { x: -200, y: 100 }, { x: 1500, y: 100 },
+        // Courbe right-down vers le palier intermédiaire
+        { x: 1700, y: 130 },
+        { x: 1850, y: 200 },
+        { x: 1950, y: 280 },
+        { x: 2010, y: 360 },
+        { x: 2030, y: 440 },
+        { x: 1990, y: 500 },
+        { x: 1900, y: 540 },
+        // Palier MIDDLE : longue plage à gauche (marche arrière)
+        { x: 1500, y: 540 },
+        { x: 1100, y: 540 },
+        { x: 700, y: 540 },
+        { x: 400, y: 540 },
+        // Courbe left-down vers le bas
+        { x: 250, y: 580 },
+        { x: 150, y: 650 },
+        { x: 110, y: 720 },
+        { x: 130, y: 790 },
+        { x: 220, y: 830 },
+        { x: 360, y: 850 },
+        // Palier BAS : on file à droite jusqu'à l'arrivée
+        { x: 700, y: 850 },
+        { x: 1300, y: 850 },
+        { x: 1900, y: 850 },
+        { x: 2500, y: 850 },
+        { x: 3100, y: 850 }
+      ],
+      obstacles: [],
+      finishX: 3100,
+      bikeStartY: 40
+    },
+    {
+      tier: 2,
+      name: 'Donjon',
+      terrain: [
+        // Étage 1 — going RIGHT
+        { x: -200, y: 100 }, { x: 1900, y: 100 },
+        // descente vers étage 2
+        { x: 2080, y: 140 },
+        { x: 2200, y: 220 },
+        { x: 2280, y: 320 },
+        { x: 2310, y: 420 },
+        { x: 2280, y: 480 },
+        { x: 2160, y: 510 },
+        // Étage 2 — going LEFT
+        { x: 1700, y: 510 },
+        { x: 1200, y: 510 },
+        { x: 600, y: 510 },
+        { x: 200, y: 510 },
+        // descente vers étage 3
+        { x: 60, y: 550 },
+        { x: -10, y: 620 },
+        { x: -30, y: 700 },
+        { x: 0, y: 770 },
+        { x: 100, y: 800 },
+        { x: 240, y: 820 },
+        // Étage 3 — going RIGHT vers la sortie
+        { x: 600, y: 820 },
+        { x: 1200, y: 820 },
+        { x: 1800, y: 820 },
+        { x: 2400, y: 820 },
+        { x: 2900, y: 820 }
+      ],
+      obstacles: [],
+      finishX: 2900,
+      bikeStartY: 40
+    },
+    {
+      tier: 2,
+      name: 'Précipice',
+      terrain: [
+        // Plat de départ en haut
+        { x: -200, y: 100 }, { x: 700, y: 100 },
+        // Plongée raide droite-bas
+        { x: 850, y: 160 },
+        { x: 950, y: 250 },
+        { x: 1010, y: 340 },
+        { x: 1040, y: 410 },
+        // Replat très court à droite
+        { x: 1100, y: 420 },
+        // Replonge gauche-bas
+        { x: 1050, y: 470 },
+        { x: 950, y: 540 },
+        { x: 800, y: 610 },
+        { x: 650, y: 650 },
+        // Replat à gauche
+        { x: 530, y: 660 },
+        // Plongée droite-bas
+        { x: 600, y: 720 },
+        { x: 720, y: 800 },
+        { x: 850, y: 870 },
+        { x: 980, y: 920 },
+        // Replat à droite
+        { x: 1100, y: 930 },
+        // Plongée gauche-bas finale
+        { x: 1020, y: 970 },
+        { x: 880, y: 1010 },
+        { x: 700, y: 1040 },
+        { x: 500, y: 1060 },
+        { x: 350, y: 1070 },
+        // Sortie : longue piste à droite vers la finish
+        { x: 700, y: 1080 },
+        { x: 1300, y: 1080 },
+        { x: 2000, y: 1080 },
+        { x: 2700, y: 1080 },
+        { x: 3300, y: 1080 }
+      ],
+      obstacles: [],
+      finishX: 3300,
+      bikeStartY: 40
     }
   ];
 
@@ -1787,63 +1905,58 @@
       const h = this.scale.height;
       this.cameras.main.setBackgroundColor('#1a2030');
 
-      // Sélection courante
       this.selectedMaps = [];
-      this.duration = 300; // 5 min par défaut
+      this.duration = 300;
+      this.currentTier = 1;
 
       // Titre
-      this.add.text(w / 2, 50, 'CONFIGURATION', {
-        font: 'bold 40px sans-serif',
+      this.add.text(w / 2, 36, 'CONFIGURATION', {
+        font: 'bold 32px sans-serif',
         color: '#ff5533',
-        stroke: '#000', strokeThickness: 4
+        stroke: '#000', strokeThickness: 3
       }).setOrigin(0.5);
 
       const subtitle = this.multiMode
-        ? '⚔️  MODE MULTI — choisis les maps puis lance la partie'
+        ? '⚔️  MULTI — choisis 1 à 3 maps + durée'
         : 'Choisis 1 à 3 maps · BO1 / BO2 / BO3';
-      this.add.text(w / 2, 90, subtitle, {
-        font: '15px sans-serif',
+      this.add.text(w / 2, 68, subtitle, {
+        font: '13px sans-serif',
         color: '#aaaaaa'
       }).setOrigin(0.5);
 
-      // Grid de maps : 4 colonnes x 2 lignes pour 8 maps
-      const cols = 4;
-      const cardW = Math.min(220, (w - 100) / cols - 14);
-      const cardH = 92;
-      const gap = 14;
-      const totalW = cols * cardW + (cols - 1) * gap;
-      const startX = (w - totalW) / 2;
-      const startY = 130;
-
-      this.mapCards = [];
-      LEVELS.forEach((level, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const x = startX + col * (cardW + gap);
-        const y = startY + row * (cardH + gap);
-        this.mapCards.push(this.makeMapCard(x, y, cardW, cardH, level, i));
+      // === Tier tabs (Niveau 1 / Niveau 2) ===
+      this.tierTabs = [];
+      const tiers = this.getAvailableTiers();
+      const tabSpacing = 160;
+      tiers.forEach((tier, idx) => {
+        const x = w / 2 + (idx - (tiers.length - 1) / 2) * tabSpacing;
+        const tab = this.add.text(x, 100, `🏆  NIVEAU ${tier}`, {
+          font: 'bold 14px sans-serif',
+          color: '#ccc',
+          backgroundColor: '#222a3a',
+          padding: { x: 18, y: 8 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        tab.on('pointerdown', () => this.switchTier(tier));
+        this.tierTabs.push({ btn: tab, tier });
       });
 
-      // === Section durée ===
-      const durY = startY + 2 * (cardH + gap) + 20;
-      this.add.text(w / 2, durY, 'DURÉE PAR MAP', {
-        font: 'bold 14px sans-serif',
+      // === Durée par map (juste après les tabs, avant la grille) ===
+      this.add.text(w / 2, 142, 'DURÉE PAR MAP', {
+        font: 'bold 11px sans-serif',
         color: '#ffaa66'
       }).setOrigin(0.5);
-
       this.durationButtons = [];
-      const durOptions = [
+      [
         { label: '1 min', val: 60 },
         { label: '3 min', val: 180 },
         { label: '5 min', val: 300 }
-      ];
-      durOptions.forEach((opt, idx) => {
-        const x = w / 2 + (idx - 1) * 130;
-        const btn = this.add.text(x, durY + 36, opt.label, {
-          font: 'bold 18px sans-serif',
+      ].forEach((opt, idx) => {
+        const x = w / 2 + (idx - 1) * 100;
+        const btn = this.add.text(x, 168, opt.label, {
+          font: 'bold 14px sans-serif',
           color: '#aaa',
           backgroundColor: '#222a3a',
-          padding: { x: 24, y: 10 }
+          padding: { x: 16, y: 6 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
         btn.on('pointerdown', () => {
           this.duration = opt.val;
@@ -1852,74 +1965,132 @@
         this.durationButtons.push({ btn, val: opt.val });
       });
 
-      // Compteur sélection
-      this.counterText = this.add.text(w / 2, durY + 90, '0 / 3 maps sélectionnées', {
-        font: 'bold 14px sans-serif',
-        color: '#aaaaaa'
+      this.counterText = this.add.text(w / 2, 200, '0 / 3 maps sélectionnées', {
+        font: 'bold 12px sans-serif',
+        color: '#aaa'
       }).setOrigin(0.5);
 
-      // Bouton GO
-      this.goBtn = this.add.text(w / 2, h - 70, 'LANCER',  {
-        font: 'bold 26px sans-serif',
+      // === Grille de cartes (en dessous, scrollable si trop) ===
+      this.mapCards = [];
+      this.cardsStartY = 232;
+      this.renderCards();
+
+      // Bouton LANCER (bas)
+      this.goBtn = this.add.text(w / 2, h - 40, 'LANCER', {
+        font: 'bold 22px sans-serif',
         color: '#777',
         backgroundColor: '#333',
-        padding: { x: 36, y: 16 }
+        padding: { x: 30, y: 11 }
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       this.goBtn.on('pointerdown', () => this.startGame());
 
-      // Bouton retour menu
+      // Retour menu
       const back = this.add.text(20, 20, '← Menu', {
-        font: 'bold 14px sans-serif',
+        font: 'bold 13px sans-serif',
         color: '#aaa',
         backgroundColor: '#333',
-        padding: { x: 14, y: 8 }
+        padding: { x: 12, y: 7 }
       }).setInteractive({ useHandCursor: true });
       back.on('pointerdown', () => {
         if (this.multiMode && this.peer) { try { this.peer.destroy(); } catch (e) {} }
         this.scene.start('Menu');
       });
 
-      // Pseudo en haut à droite
+      // Pseudo
       const pseudo = Player.getName();
       if (pseudo) {
-        this.add.text(w - 20, 24, '👤 ' + pseudo, {
-          font: 'bold 14px sans-serif',
+        this.add.text(w - 20, 22, '👤 ' + pseudo, {
+          font: 'bold 13px sans-serif',
           color: '#ffdd44',
           backgroundColor: '#222a3a',
-          padding: { x: 12, y: 6 }
+          padding: { x: 11, y: 5 }
         }).setOrigin(1, 0);
       }
 
       this.refreshUI();
     }
 
+    getAvailableTiers() {
+      const tiers = new Set();
+      LEVELS.forEach(lv => tiers.add(lv.tier || 1));
+      return Array.from(tiers).sort();
+    }
+
+    switchTier(tier) {
+      if (tier === this.currentTier) return;
+      this.currentTier = tier;
+      this.selectedMaps = [];
+      this.mapCards.forEach(card => card.container.destroy());
+      this.mapCards = [];
+      this.renderCards();
+      this.refreshUI();
+    }
+
+    renderCards() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      const tierMaps = LEVELS.map((lv, i) => ({ lv, i }))
+        .filter(({ lv }) => (lv.tier || 1) === this.currentTier);
+      const cols = 5;
+      const availH = h - this.cardsStartY - 90;
+      const rows = Math.ceil(tierMaps.length / cols);
+      const cardW = Math.min(240, (w - 80) / cols - 10);
+      const cardH = Math.min(120, (availH - (rows - 1) * 10) / rows);
+      const gap = 10;
+      const totalW = cols * cardW + (cols - 1) * gap;
+      const startX = (w - totalW) / 2;
+
+      tierMaps.forEach(({ lv, i }, idx) => {
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        const x = startX + col * (cardW + gap);
+        const y = this.cardsStartY + row * (cardH + gap);
+        this.mapCards.push(this.makeMapCard(x, y, cardW, cardH, lv, i));
+      });
+    }
+
     makeMapCard(x, y, cw, ch, level, mapIndex) {
       const container = this.add.container(x, y);
+
+      // Background card
       const bg = this.add.graphics();
       container.add(bg);
 
-      const text = this.add.text(cw / 2, ch / 2 - 8, level.name, {
-        font: 'bold 13px sans-serif',
+      // Mini terrain thumbnail
+      const thumbY = 4;
+      const thumbH = ch * 0.55;
+      const thumbX = 4;
+      const thumbW = cw - 8;
+      const thumb = this.add.graphics();
+      this.drawThumbnail(thumb, thumbX, thumbY, thumbW, thumbH, level);
+      container.add(thumb);
+
+      // Name
+      const nameY = thumbY + thumbH + 4;
+      const text = this.add.text(cw / 2, nameY, level.name, {
+        font: 'bold 11px sans-serif',
         color: '#ffffff',
         align: 'center',
-        wordWrap: { width: cw - 16 }
-      }).setOrigin(0.5);
+        wordWrap: { width: cw - 12 }
+      }).setOrigin(0.5, 0);
       container.add(text);
 
-      const orderBadge = this.add.text(8, 6, '', {
-        font: 'bold 18px sans-serif',
-        color: '#ffdd44'
+      // Best time
+      const best = Player.getBest(mapIndex);
+      const bestStr = best !== null ? '★ ' + best.toFixed(2) + 's' : '★ —';
+      const bestText = this.add.text(cw / 2, ch - 12, bestStr, {
+        font: 'bold 10px monospace',
+        color: best !== null ? '#ffaa66' : '#666'
+      }).setOrigin(0.5, 0);
+      container.add(bestText);
+
+      // Order badge
+      const orderBadge = this.add.text(6, 4, '', {
+        font: 'bold 14px sans-serif',
+        color: '#ffdd44',
+        stroke: '#000', strokeThickness: 2
       });
       container.add(orderBadge);
-
-      const best = Player.getBest(mapIndex);
-      if (best !== null) {
-        const bestText = this.add.text(cw / 2, ch / 2 + 22, '★ ' + best.toFixed(2) + 's', {
-          font: 'bold 11px monospace',
-          color: '#ffaa66'
-        }).setOrigin(0.5);
-        container.add(bestText);
-      }
 
       const hit = new Phaser.Geom.Rectangle(0, 0, cw, ch);
       container.setSize(cw, ch);
@@ -1929,6 +2100,82 @@
       container.on('pointerout', () => container.setAlpha(1));
 
       return { container, bg, orderBadge, mapIndex, w: cw, h: ch };
+    }
+
+    drawThumbnail(g, x, y, w, h, level) {
+      const points = level.terrain;
+      if (!points || points.length === 0) return;
+
+      // Compute bounds
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      const padding = 3;
+      const availW = w - padding * 2;
+      const availH = h - padding * 2;
+      const rangeX = (maxX - minX) || 1;
+      const rangeY = (maxY - minY) || 1;
+      const scale = Math.min(availW / rangeX, availH / rangeY);
+      const offsetX = x + padding + (availW - rangeX * scale) / 2;
+      const offsetY = y + padding + (availH - rangeY * scale) / 2;
+
+      // Sky background
+      g.fillStyle(0x4a6580, 1);
+      g.fillRoundedRect(x, y, w, h, 4);
+
+      // Terrain (per-segment wedge to bottom of thumbnail)
+      g.fillStyle(0x6a4a30);
+      const bottom = y + h - 1;
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        if (p1.gap) continue;
+        const p2 = points[i + 1];
+        const x1 = offsetX + (p1.x - minX) * scale;
+        const y1 = offsetY + (p1.y - minY) * scale;
+        const x2 = offsetX + (p2.x - minX) * scale;
+        const y2 = offsetY + (p2.y - minY) * scale;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        g.lineTo(x2, y2);
+        g.lineTo(x2, bottom);
+        g.lineTo(x1, bottom);
+        g.closePath();
+        g.fillPath();
+      }
+
+      // Top line in green
+      g.lineStyle(1.5, 0x66cc55);
+      let lineStarted = false;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        const cx = offsetX + (p.x - minX) * scale;
+        const cy = offsetY + (p.y - minY) * scale;
+        if (!lineStarted) {
+          g.beginPath();
+          g.moveTo(cx, cy);
+          lineStarted = true;
+        } else {
+          g.lineTo(cx, cy);
+        }
+        if (p.gap) {
+          g.strokePath();
+          lineStarted = false;
+        }
+      }
+      if (lineStarted) g.strokePath();
+
+      // Finish flag (small yellow vertical line)
+      if (level.finishX !== undefined) {
+        const lastPt = points[points.length - 1];
+        const fx = offsetX + (level.finishX - minX) * scale;
+        const fy = offsetY + (lastPt.y - minY) * scale;
+        g.lineStyle(1.5, 0xffdd44);
+        g.lineBetween(fx, fy - 6, fx, fy);
+      }
     }
 
     toggleMap(mapIndex) {
@@ -1961,6 +2208,17 @@
           card.orderBadge.setText('');
         }
       });
+
+      // Tier tabs (highlight le tier actif)
+      if (this.tierTabs) {
+        this.tierTabs.forEach(({ btn, tier }) => {
+          if (tier === this.currentTier) {
+            btn.setStyle({ backgroundColor: '#ff5533', color: '#fff' });
+          } else {
+            btn.setStyle({ backgroundColor: '#222a3a', color: '#ccc' });
+          }
+        });
+      }
 
       // Boutons durée
       this.durationButtons.forEach(({ btn, val }) => {
