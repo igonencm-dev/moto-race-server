@@ -943,61 +943,89 @@
     // ============== TIER 2 ==============
     {
       tier: 2,
-      name: 'Le Puits',
+      name: 'La Grotte',
       terrain: [
-        // 1. Plateforme de départ (en hauteur, plate)
-        { x: 0, y: 200 }, { x: 680, y: 200 },
-        // Pointe arrondie qui descend (rampe de saut)
-        { x: 720, y: 215 },
-        { x: 750, y: 250 },
-        { x: 770, y: 295 },
-        // 2. SAUT — gap dans le sol, force le saut
-        { x: 770, y: 295, gap: true },
-        // 3. Descente : atterrissage progressif
-        { x: 900, y: 400 },
-        { x: 1020, y: 480 },
-        { x: 1140, y: 550 },
-        // 4. Piste basse avec bosses douces
-        { x: 1280, y: 600 },
-        { x: 1400, y: 615 },
-        { x: 1500, y: 600 },
-        { x: 1600, y: 620 },
-        { x: 1720, y: 605 },
-        { x: 1840, y: 625 },
-        { x: 1960, y: 615 },
-        // 5. Montée progressive (rampe centrale)
-        { x: 2100, y: 580 },
-        { x: 2240, y: 520 },
-        { x: 2380, y: 450 },
-        { x: 2520, y: 380 },
-        { x: 2640, y: 320 },
-        // 6. Plateforme finale (horizontale, sous le rocher)
-        { x: 2750, y: 300 },
-        { x: 3000, y: 300 },
-        { x: 3250, y: 300 },
-        { x: 3450, y: 300 },
-        // 7. Descente finale vers l'arrivée
-        { x: 3580, y: 340 },
-        { x: 3720, y: 410 },
-        { x: 3850, y: 480 },
-        { x: 3980, y: 540 },
-        // Plat de l'arrivée (en bas à droite)
-        { x: 4100, y: 570 },
-        { x: 4400, y: 570 }
+        // === Sol organique de la caverne (une seule surface continue) ===
+        // Entrée gauche, descente progressive dans la grotte
+        { x: -200, y: 300 }, { x: 100, y: 305 },
+        { x: 240, y: 325 },
+        { x: 380, y: 365 },
+        { x: 530, y: 425 },
+        { x: 680, y: 495 },
+        { x: 820, y: 545 },
+        // Bosse naturelle 1
+        { x: 970, y: 530 },
+        { x: 1100, y: 510 },
+        { x: 1240, y: 520 },
+        { x: 1380, y: 555 },
+        // Cuvette (bowl)
+        { x: 1530, y: 615 },
+        { x: 1680, y: 675 },
+        { x: 1830, y: 715 },
+        { x: 1990, y: 730 },
+        { x: 2140, y: 715 },
+        { x: 2290, y: 685 },
+        { x: 2440, y: 645 },
+        { x: 2590, y: 615 },
+        // Plat avec micro-bosses
+        { x: 2730, y: 600 },
+        { x: 2840, y: 590 }, { x: 2950, y: 600 },
+        { x: 3060, y: 595 },
+        // Rampe qui monte vers la zone supérieure (sortie)
+        { x: 3210, y: 540 },
+        { x: 3360, y: 465 },
+        { x: 3510, y: 385 },
+        { x: 3660, y: 305 },
+        { x: 3810, y: 245 },
+        { x: 3950, y: 205 },
+        // Plat de l'arrivée
+        { x: 4100, y: 200 },
+        { x: 4350, y: 200 }
       ],
       obstacles: [],
-      decor: [
-        // Flèche sur la plateforme de départ → droite
-        { type: 'arrow', x: 350, y: 170, dir: 'right', size: 70 },
-        // Flèche au-dessus du saut → down-right
-        { type: 'arrow', x: 830, y: 340, dir: 'down-right', size: 60 },
-        // Rocher dangereux décoratif au-dessus de la plateforme finale
-        { type: 'rockCeiling', x: 3100, y: 130, w: 750, h: 130 },
-        // Mur décoratif sur le côté gauche
-        { type: 'wall', x: -15, y: 200, w: 30, h: 500 }
+      ceilings: [
+        // === Contour organique du plafond rocheux (bord inférieur de la roche) ===
+        // L'algo dessine la masse de roche AU-DESSUS de ces points avec dents d'herbe en bas.
+        // Entrée : plafond bas et menaçant
+        { x: -200, y: 100 },
+        { x: 50, y: 130 },
+        { x: 200, y: 170 },
+        { x: 380, y: 220 },
+        { x: 530, y: 280 },
+        // Descente vers le bas (suit le sol)
+        { x: 680, y: 340 },
+        { x: 800, y: 380 },
+        // Resserrement tunnel autour de la bosse (passage étroit)
+        { x: 920, y: 360 },
+        { x: 1050, y: 340 },
+        { x: 1180, y: 330 },
+        { x: 1320, y: 350 },
+        { x: 1450, y: 380 },
+        // Ouverture au-dessus de la cuvette (zone large, respiration)
+        { x: 1600, y: 430 },
+        { x: 1780, y: 480 },
+        { x: 1980, y: 520 },
+        { x: 2180, y: 530 },
+        { x: 2380, y: 510 },
+        { x: 2580, y: 470 },
+        // Resserrement avant la rampe
+        { x: 2740, y: 450 },
+        { x: 2880, y: 460 },
+        { x: 3020, y: 450 },
+        { x: 3140, y: 440 },
+        // Plafond suit la rampe qui monte
+        { x: 3280, y: 380 },
+        { x: 3430, y: 300 },
+        { x: 3580, y: 220 },
+        { x: 3730, y: 140 },
+        { x: 3880, y: 80 },
+        { x: 4040, y: 50 },
+        // Sortie ouverte
+        { x: 4200, y: 50 },
+        { x: 4400, y: 50 }
       ],
-      finishX: 4400,
-      bikeStartY: 140
+      finishX: 4350,
+      bikeStartY: 240
     },
     {
       tier: 2,
@@ -2719,9 +2747,17 @@
       this.obstaclesGfx = this.add.graphics();
       level.obstacles.forEach(o => this.addObstacle(o));
 
-      // Plafonds (pour les tunnels)
+      // Plafonds : 2 formats supportés
+      // - Ancien: [{x, y, w, h}, ...] — rectangles
+      // - Nouveau: [{x, y}, ...] — contour organique (bord inférieur du plafond rocheux)
       this.ceilingsGfx = this.add.graphics();
-      (level.ceilings || []).forEach(c => this.addCeiling(c));
+      if (level.ceilings && level.ceilings.length > 0) {
+        if (level.ceilings[0].w !== undefined) {
+          level.ceilings.forEach(c => this.addCeiling(c));
+        } else {
+          this.buildCeilingPath(level.ceilings);
+        }
+      }
 
       // Boost pads (zones orange qui propulsent)
       this.boostPadGfx = this.add.graphics();
@@ -3420,6 +3456,128 @@
         g.fillStyle(0xffffaa, 0.7);
         g.fillEllipse(c.x - w * 0.15, c.y - 4, w * 0.4, 6);
       });
+    }
+
+    buildCeilingPath(points) {
+      const g = this.ceilingsGfx;
+
+      // === Physique : un rectangle par segment, face BASSE = ligne du segment, étendu VERS LE HAUT ===
+      for (let i = 0; i < points.length - 1; i++) {
+        let p1 = points[i];
+        let p2 = points[i + 1];
+        if (p2.x < p1.x) { const tmp = p1; p1 = p2; p2 = tmp; }
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        if (dx === 0 && dy === 0) continue;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        const cx = (p1.x + p2.x) / 2;
+        // Pour un plafond, le rectangle s'étend VERS LE HAUT (Y plus petit) depuis le segment
+        // Normal vers le haut = (sin(a), -cos(a)), donc center = midpoint + 50 * (sin, -cos)
+        const cxOffset = 50 * Math.sin(angle);
+        const cy = (p1.y + p2.y) / 2 - 50 * Math.cos(angle);
+        this.matter.add.rectangle(cx + cxOffset, cy, len, 100, {
+          isStatic: true,
+          angle,
+          label: 'ceiling',
+          chamfer: { radius: 0 }
+        });
+      }
+
+      // === Visuel : grosse masse de roche brune au-dessus du contour, jusqu'à y=-1800 ===
+      g.fillStyle(0x4a3a2a);
+      g.beginPath();
+      g.moveTo(points[0].x, -1800);
+      for (const p of points) g.lineTo(p.x, p.y);
+      g.lineTo(points[points.length - 1].x, -1800);
+      g.closePath();
+      g.fillPath();
+
+      // Texture rochers (taches plus claires) au-dessus du contour
+      g.fillStyle(0x6a5a3a);
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const nx = -dy / len, ny = -dx / len; // inversé pour éviter conflit, on calcule directement
+        const segments = Math.max(1, Math.floor(len / 50));
+        for (let s = 0; s < segments; s++) {
+          const t = (s + 0.5) / segments;
+          const baseX = p1.x + dx * t;
+          const baseY = p1.y + dy * t;
+          // Tache à ~25-50px au-dessus du contour
+          const offset = 25 + Math.random() * 30;
+          const upX = baseX + (-dy / len) * (-offset); // inverse car on veut aller VERS LE HAUT
+          const upY = baseY - Math.abs(dx / len) * offset - offset * 0.5;
+          g.fillCircle(upX, upY, 2 + Math.random() * 2);
+        }
+      }
+
+      // === Bande d'herbe verte sur le bord inférieur (le bord exposé, qui touche la grotte) ===
+      g.fillStyle(0x55aa44);
+      for (let i = 0; i < points.length - 1; i++) {
+        let p1 = points[i];
+        let p2 = points[i + 1];
+        if (p2.x < p1.x) { const tmp = p1; p1 = p2; p2 = tmp; }
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len === 0) continue;
+        const angle = Math.atan2(dy, dx);
+        const cx = (p1.x + p2.x) / 2;
+        const cy = (p1.y + p2.y) / 2;
+        // Bande mince juste au-dessus du contour (côté roche)
+        const halfL = len / 2;
+        const halfH = 4;
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        // Décale la bande de 4px VERS LE HAUT (côté roche)
+        const offsetCx = cx + 4 * Math.sin(angle);
+        const offsetCy = cy - 4 * Math.cos(angle);
+        const corners = [[-halfL, -halfH], [halfL, -halfH], [halfL, halfH], [-halfL, halfH]]
+          .map(([x, y]) => [offsetCx + x * cos - y * sin, offsetCy + x * sin + y * cos]);
+        g.beginPath();
+        g.moveTo(corners[0][0], corners[0][1]);
+        corners.forEach(c => g.lineTo(c[0], c[1]));
+        g.closePath();
+        g.fillPath();
+      }
+
+      // === Dents d'herbe pointant vers la grotte (vers le bas, vers le bike) ===
+      g.fillStyle(0x77cc55);
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len === 0) continue;
+        // Normale pointant vers la grotte (côté bike, côté "bas" du plafond)
+        // Pour ceiling : pointe vers le bas-gauche-bas selon l'angle
+        // (-dy, dx)/len pointe vers... pour dx>0, dy=0: (0, dx/len) = (0, +1) = down. ✓
+        const nx = -dy / len;
+        const ny = dx / len;
+        const teeth = Math.max(2, Math.floor(len / 16));
+        for (let s = 0; s < teeth; s++) {
+          const t = (s + 0.5) / teeth;
+          const baseX = p1.x + dx * t;
+          const baseY = p1.y + dy * t;
+          const halfBaseW = 3 + Math.random();
+          // Base le long du segment
+          const tangX = dx / len * halfBaseW;
+          const tangY = dy / len * halfBaseW;
+          const tipDepth = 5 + Math.random() * 4;
+          // Pointe dans la direction normale (vers la grotte = vers le bas)
+          const tipX = baseX + nx * tipDepth;
+          const tipY = baseY + ny * tipDepth;
+          g.fillTriangle(
+            baseX - tangX, baseY - tangY,
+            baseX + tangX, baseY + tangY,
+            tipX, tipY
+          );
+        }
+      }
     }
 
     addCeiling(c) {
