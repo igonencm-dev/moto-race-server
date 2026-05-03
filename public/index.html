@@ -940,122 +940,97 @@
       finishX: 6500,
       bikeStartY: 140
     },
-    // ============== TIER 2 ==============
+    // ============== TIER 2 — MAPS À MARCHE ARRIÈRE FORCÉE ==============
+    // Chaque map a un mur infranchissable + une faille DERRIÈRE.
+    // Tu avances → mur bloque → tu DOIS reculer (←) → tu tombes par la faille → tu finis en bas.
     {
       tier: 2,
-      name: 'Vallée',
+      name: 'Impasse',
       terrain: [
-        // Étage haut, on roule à droite
-        { x: -200, y: 100 }, { x: 1500, y: 100 },
-        // Courbe right-down vers le palier intermédiaire
-        { x: 1700, y: 130 },
-        { x: 1850, y: 200 },
-        { x: 1950, y: 280 },
-        { x: 2010, y: 360 },
-        { x: 2030, y: 440 },
-        { x: 1990, y: 500 },
-        { x: 1900, y: 540 },
-        // Palier MIDDLE : longue plage à gauche (marche arrière)
-        { x: 1500, y: 540 },
-        { x: 1100, y: 540 },
-        { x: 700, y: 540 },
-        { x: 400, y: 540 },
-        // Courbe left-down vers le bas
-        { x: 250, y: 580 },
-        { x: 150, y: 650 },
-        { x: 110, y: 720 },
-        { x: 130, y: 790 },
-        { x: 220, y: 830 },
-        { x: 360, y: 850 },
-        // Palier BAS : on file à droite jusqu'à l'arrivée
-        { x: 700, y: 850 },
-        { x: 1300, y: 850 },
-        { x: 1900, y: 850 },
-        { x: 2500, y: 850 },
-        { x: 3100, y: 850 }
+        // === Plateau du haut (chunk 0, où la moto spawn) ===
+        { x: -200, y: 200 }, { x: 1000, y: 200 },
+        // === FAILLE 200px (cachée dans le sol) ===
+        { x: 1000, y: 200, gap: true },
+        // === Plateau + MUR très raide (chunk 1) ===
+        { x: 1200, y: 200 },
+        { x: 1230, y: 30 },
+        { x: 1230, y: 30, gap: true },
+        // === Plateau du bas (atterrissage + finish) ===
+        { x: -200, y: 600 },
+        { x: 300, y: 600 },
+        { x: 800, y: 600 },
+        { x: 1300, y: 600 },
+        // bosse pour le flow
+        { x: 1500, y: 580 }, { x: 1700, y: 600 },
+        { x: 2200, y: 600 },
+        { x: 2700, y: 600 },
+        { x: 3200, y: 600 }
       ],
       obstacles: [],
-      finishX: 3100,
+      finishX: 3200,
+      bikeStartY: 140
+    },
+    {
+      tier: 2,
+      name: 'Cul-de-sac',
+      terrain: [
+        // === ÉTAGE 1 (top) ===
+        { x: -200, y: 100 }, { x: 900, y: 100 },
+        { x: 900, y: 100, gap: true },
+        { x: 1100, y: 100 }, { x: 1700, y: 100 },
+        { x: 1730, y: -50 },
+        { x: 1730, y: -50, gap: true },
+        // === ÉTAGE 2 (atterrissage de l'étage 1, puis nouveau mur) ===
+        { x: -200, y: 400 }, { x: 1500, y: 400 },
+        { x: 1500, y: 400, gap: true },
+        { x: 1700, y: 400 }, { x: 2300, y: 400 },
+        { x: 2330, y: 250 },
+        { x: 2330, y: 250, gap: true },
+        // === ÉTAGE 3 (finish) ===
+        { x: -200, y: 700 },
+        { x: 800, y: 700 },
+        { x: 1700, y: 700 },
+        // bosse
+        { x: 1900, y: 680 }, { x: 2100, y: 700 },
+        { x: 2700, y: 700 },
+        { x: 3500, y: 700 }
+      ],
+      obstacles: [],
+      finishX: 3500,
       bikeStartY: 40
     },
     {
       tier: 2,
-      name: 'Donjon',
+      name: 'Le Précipice',
       terrain: [
-        // Étage 1 — going RIGHT
-        { x: -200, y: 100 }, { x: 1900, y: 100 },
-        // descente vers étage 2
-        { x: 2080, y: 140 },
-        { x: 2200, y: 220 },
-        { x: 2280, y: 320 },
-        { x: 2310, y: 420 },
-        { x: 2280, y: 480 },
-        { x: 2160, y: 510 },
-        // Étage 2 — going LEFT
-        { x: 1700, y: 510 },
-        { x: 1200, y: 510 },
-        { x: 600, y: 510 },
-        { x: 200, y: 510 },
-        // descente vers étage 3
-        { x: 60, y: 550 },
-        { x: -10, y: 620 },
-        { x: -30, y: 700 },
-        { x: 0, y: 770 },
-        { x: 100, y: 800 },
-        { x: 240, y: 820 },
-        // Étage 3 — going RIGHT vers la sortie
-        { x: 600, y: 820 },
-        { x: 1200, y: 820 },
-        { x: 1800, y: 820 },
-        { x: 2400, y: 820 },
-        { x: 2900, y: 820 }
+        // === ÉTAGE 1 ===
+        { x: -200, y: 100 }, { x: 1100, y: 100 },
+        { x: 1100, y: 100, gap: true },
+        { x: 1300, y: 100 }, { x: 1900, y: 100 },
+        { x: 1930, y: -50 },
+        { x: 1930, y: -50, gap: true },
+        // === ÉTAGE 2 (zigzag : faille à gauche, mur à droite) ===
+        { x: -200, y: 380 }, { x: 700, y: 380 },
+        { x: 700, y: 380, gap: true },
+        { x: 900, y: 380 }, { x: 1700, y: 380 },
+        { x: 1730, y: 230 },
+        { x: 1730, y: 230, gap: true },
+        // === ÉTAGE 3 (mur de l'autre côté : faille à droite, plateau plus court) ===
+        { x: -200, y: 660 }, { x: 1700, y: 660 },
+        { x: 1700, y: 660, gap: true },
+        { x: 1900, y: 660 }, { x: 2400, y: 660 },
+        { x: 2430, y: 510 },
+        { x: 2430, y: 510, gap: true },
+        // === ÉTAGE 4 (finish, longue piste) ===
+        { x: -200, y: 940 },
+        { x: 800, y: 940 },
+        { x: 1700, y: 940 },
+        { x: 2600, y: 940 },
+        { x: 3500, y: 940 },
+        { x: 4200, y: 940 }
       ],
       obstacles: [],
-      finishX: 2900,
-      bikeStartY: 40
-    },
-    {
-      tier: 2,
-      name: 'Précipice',
-      terrain: [
-        // Plat de départ en haut
-        { x: -200, y: 100 }, { x: 700, y: 100 },
-        // Plongée raide droite-bas
-        { x: 850, y: 160 },
-        { x: 950, y: 250 },
-        { x: 1010, y: 340 },
-        { x: 1040, y: 410 },
-        // Replat très court à droite
-        { x: 1100, y: 420 },
-        // Replonge gauche-bas
-        { x: 1050, y: 470 },
-        { x: 950, y: 540 },
-        { x: 800, y: 610 },
-        { x: 650, y: 650 },
-        // Replat à gauche
-        { x: 530, y: 660 },
-        // Plongée droite-bas
-        { x: 600, y: 720 },
-        { x: 720, y: 800 },
-        { x: 850, y: 870 },
-        { x: 980, y: 920 },
-        // Replat à droite
-        { x: 1100, y: 930 },
-        // Plongée gauche-bas finale
-        { x: 1020, y: 970 },
-        { x: 880, y: 1010 },
-        { x: 700, y: 1040 },
-        { x: 500, y: 1060 },
-        { x: 350, y: 1070 },
-        // Sortie : longue piste à droite vers la finish
-        { x: 700, y: 1080 },
-        { x: 1300, y: 1080 },
-        { x: 2000, y: 1080 },
-        { x: 2700, y: 1080 },
-        { x: 3300, y: 1080 }
-      ],
-      obstacles: [],
-      finishX: 3300,
+      finishX: 4200,
       bikeStartY: 40
     }
   ];
