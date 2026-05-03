@@ -825,6 +825,64 @@
       obstacles: [],
       finishX: 6100,
       bikeStartY: 140
+    },
+    {
+      name: 'Niveau 24 — Marche Arrière',
+      terrain: [
+        // === Phase 1 : surface en haut, on roule à droite normalement ===
+        { x: -200, y: 200 }, { x: 1500, y: 200 },
+        // === Toboggan smooth qui descend vers la droite ===
+        { x: 1650, y: 230 },
+        { x: 1800, y: 290 },
+        { x: 1950, y: 380 },
+        { x: 2100, y: 490 },
+        { x: 2220, y: 600 },
+        { x: 2310, y: 690 },
+        { x: 2380, y: 750 },
+        // === Phase 2 : back-turn (descente VERS LA GAUCHE-BAS) ===
+        // La moto glisse en marche arrière sur cette pente
+        { x: 2370, y: 800 },
+        { x: 2310, y: 860 },
+        { x: 2210, y: 920 },
+        { x: 2080, y: 970 },
+        { x: 1930, y: 1015 },
+        { x: 1770, y: 1050 },
+        { x: 1610, y: 1080 },
+        { x: 1450, y: 1100 },
+        { x: 1290, y: 1115 },
+        { x: 1180, y: 1125 },
+        { x: 1100, y: 1130 },
+        // Mur naturel : remontée gauche pour stopper la moto
+        { x: 1050, y: 1115 },
+        { x: 1020, y: 1090 },
+        { x: 1010, y: 1060 },
+        // === Phase 3 : descente du mur vers la droite (marche avant retrouvée) ===
+        { x: 1040, y: 1080 },
+        { x: 1080, y: 1100 },
+        { x: 1130, y: 1115 },
+        { x: 1200, y: 1120 },
+        // Tunnel : on roule à droite jusqu'à la sortie
+        { x: 1400, y: 1120 },
+        { x: 1700, y: 1120 },
+        { x: 2100, y: 1120 },
+        { x: 2600, y: 1120 },
+        { x: 3100, y: 1120 },
+        // === Remontée smooth vers la sortie ===
+        { x: 3300, y: 1080 },
+        { x: 3500, y: 1010 },
+        { x: 3700, y: 920 },
+        { x: 3900, y: 800 },
+        { x: 4100, y: 660 },
+        { x: 4300, y: 530 },
+        { x: 4500, y: 410 },
+        { x: 4700, y: 320 },
+        // Surface finale
+        { x: 4900, y: 290 },
+        { x: 5400, y: 290 }
+      ],
+      obstacles: [],
+      finishX: 5400,
+      bikeStartY: 140
     }
   ];
 
@@ -2778,13 +2836,17 @@
     buildTerrain(points) {
       const level = LEVELS[this.levelIndex];
       const terrainFriction = (level && level.friction !== undefined) ? level.friction : 0.9;
-      // Bodies physiques (rectangles inclinés entre points). Skip si p1.gap=true → vrai trou
+      // Bodies physiques. Skip si gap=true. Swap p1↔p2 si segment va vers la gauche
+      // (sinon le rectangle se met du mauvais côté de la ligne)
       for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        if (p1.gap) continue;
-        const p2 = points[i + 1];
+        const origP1 = points[i];
+        if (origP1.gap) continue;
+        let p1 = origP1;
+        let p2 = points[i + 1];
+        if (p2.x < p1.x) { const tmp = p1; p1 = p2; p2 = tmp; }
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
+        if (dx === 0 && dy === 0) continue;
         const len = Math.sqrt(dx * dx + dy * dy);
         const angle = Math.atan2(dy, dx);
         const cx = (p1.x + p2.x) / 2;
@@ -2799,7 +2861,7 @@
         });
       }
 
-      // Découpe en chunks (séparés par les points marqués gap)
+      // Découpe en chunks (séparés par gap)
       const chunks = [];
       let chunk = [];
       for (let i = 0; i < points.length; i++) {
@@ -2811,27 +2873,37 @@
       }
       if (chunk.length) chunks.push(chunk);
 
-      // Visuel : remplissage marron par chunk (les trous restent vides)
+      // Visuel : remplissage marron par chunk (utilise min/max x pour bornes du polygone,
+      // ce qui permet d'avoir des U-turns / segments inversés)
       const g = this.terrainGfx;
       g.fillStyle(0x4a3a2a);
       for (const c of chunks) {
         if (c.length < 2) continue;
+        let minX = c[0].x, maxX = c[0].x;
+        for (const p of c) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+        }
         g.beginPath();
-        g.moveTo(c[0].x, 1500);
+        g.moveTo(minX, 1500);
+        g.lineTo(c[0].x, c[0].y);
         c.forEach(p => g.lineTo(p.x, p.y));
-        g.lineTo(c[c.length - 1].x, 1500);
+        g.lineTo(maxX, 1500);
         g.closePath();
         g.fillPath();
       }
 
-      // Bande d'herbe en surface (skip gap segments)
+      // Bande d'herbe (swap si dx < 0)
       g.fillStyle(0x55aa44);
       for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        if (p1.gap) continue;
-        const p2 = points[i + 1];
+        const origP1 = points[i];
+        if (origP1.gap) continue;
+        let p1 = origP1;
+        let p2 = points[i + 1];
+        if (p2.x < p1.x) { const tmp = p1; p1 = p2; p2 = tmp; }
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
+        if (dx === 0 && dy === 0) continue;
         const len = Math.sqrt(dx * dx + dy * dy);
         const angle = Math.atan2(dy, dx);
         const cx = (p1.x + p2.x) / 2;
@@ -2848,7 +2920,7 @@
         g.fillPath();
       }
 
-      // Petits brins d'herbe pour le détail (skip gap segments)
+      // Petits brins d'herbe (skip gap)
       g.lineStyle(2, 0x77cc55);
       for (let i = 0; i < points.length - 1; i++) {
         const p1 = points[i];
