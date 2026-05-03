@@ -940,98 +940,125 @@
       finishX: 6500,
       bikeStartY: 140
     },
-    // ============== TIER 2 — MAPS À MARCHE ARRIÈRE FORCÉE ==============
-    // Chaque map a un mur infranchissable + une faille DERRIÈRE.
-    // Tu avances → mur bloque → tu DOIS reculer (←) → tu tombes par la faille → tu finis en bas.
+    // ============== TIER 2 — ARCADE STYLE ==============
+    // Multi-étages, vrais tunnels (avec plafond), flow naturel sans marche arrière forcée
     {
       tier: 2,
-      name: 'Impasse',
+      name: 'Cascade',
       terrain: [
-        // === Plateau du haut (chunk 0, où la moto spawn) ===
-        { x: -200, y: 200 }, { x: 1000, y: 200 },
-        // === FAILLE 200px (cachée dans le sol) ===
-        { x: 1000, y: 200, gap: true },
-        // === Plateau + MUR très raide (chunk 1) ===
-        { x: 1200, y: 200 },
-        { x: 1230, y: 30 },
-        { x: 1230, y: 30, gap: true },
-        // === Plateau du bas (atterrissage + finish) ===
-        { x: -200, y: 600 },
-        { x: 300, y: 600 },
-        { x: 800, y: 600 },
-        { x: 1300, y: 600 },
-        // bosse pour le flow
-        { x: 1500, y: 580 }, { x: 1700, y: 600 },
-        { x: 2200, y: 600 },
-        { x: 2700, y: 600 },
-        { x: 3200, y: 600 }
+        // === Étage 1 (top) : départ ===
+        { x: -200, y: 100 }, { x: 1000, y: 100 },
+        // Rampe smooth descente vers étage 2
+        { x: 1100, y: 130 },
+        { x: 1200, y: 180 },
+        { x: 1280, y: 240 },
+        { x: 1320, y: 290 },
+        // Étage 2
+        { x: 1500, y: 300 }, { x: 2300, y: 300 },
+        // Rampe vers étage 3
+        { x: 2400, y: 330 },
+        { x: 2500, y: 380 },
+        { x: 2580, y: 440 },
+        { x: 2620, y: 490 },
+        // Étage 3
+        { x: 2800, y: 500 }, { x: 3600, y: 500 },
+        // Rampe vers étage 4 (final)
+        { x: 3700, y: 530 },
+        { x: 3800, y: 580 },
+        { x: 3880, y: 640 },
+        { x: 3920, y: 690 },
+        // Étage 4 — finish
+        { x: 4100, y: 700 },
+        // mini bosse pour le flow
+        { x: 4350, y: 680 }, { x: 4600, y: 700 },
+        { x: 5000, y: 700 },
+        { x: 5800, y: 700 }
       ],
       obstacles: [],
-      finishX: 3200,
-      bikeStartY: 140
-    },
-    {
-      tier: 2,
-      name: 'Cul-de-sac',
-      terrain: [
-        // === ÉTAGE 1 (top) ===
-        { x: -200, y: 100 }, { x: 900, y: 100 },
-        { x: 900, y: 100, gap: true },
-        { x: 1100, y: 100 }, { x: 1700, y: 100 },
-        { x: 1730, y: -50 },
-        { x: 1730, y: -50, gap: true },
-        // === ÉTAGE 2 (atterrissage de l'étage 1, puis nouveau mur) ===
-        { x: -200, y: 400 }, { x: 1500, y: 400 },
-        { x: 1500, y: 400, gap: true },
-        { x: 1700, y: 400 }, { x: 2300, y: 400 },
-        { x: 2330, y: 250 },
-        { x: 2330, y: 250, gap: true },
-        // === ÉTAGE 3 (finish) ===
-        { x: -200, y: 700 },
-        { x: 800, y: 700 },
-        { x: 1700, y: 700 },
-        // bosse
-        { x: 1900, y: 680 }, { x: 2100, y: 700 },
-        { x: 2700, y: 700 },
-        { x: 3500, y: 700 }
-      ],
-      obstacles: [],
-      finishX: 3500,
+      finishX: 5800,
       bikeStartY: 40
     },
     {
       tier: 2,
-      name: 'Le Précipice',
+      name: 'Le Tunnel',
       terrain: [
-        // === ÉTAGE 1 ===
-        { x: -200, y: 100 }, { x: 1100, y: 100 },
-        { x: 1100, y: 100, gap: true },
-        { x: 1300, y: 100 }, { x: 1900, y: 100 },
-        { x: 1930, y: -50 },
-        { x: 1930, y: -50, gap: true },
-        // === ÉTAGE 2 (zigzag : faille à gauche, mur à droite) ===
-        { x: -200, y: 380 }, { x: 700, y: 380 },
-        { x: 700, y: 380, gap: true },
-        { x: 900, y: 380 }, { x: 1700, y: 380 },
-        { x: 1730, y: 230 },
-        { x: 1730, y: 230, gap: true },
-        // === ÉTAGE 3 (mur de l'autre côté : faille à droite, plateau plus court) ===
-        { x: -200, y: 660 }, { x: 1700, y: 660 },
-        { x: 1700, y: 660, gap: true },
-        { x: 1900, y: 660 }, { x: 2400, y: 660 },
-        { x: 2430, y: 510 },
-        { x: 2430, y: 510, gap: true },
-        // === ÉTAGE 4 (finish, longue piste) ===
-        { x: -200, y: 940 },
-        { x: 800, y: 940 },
-        { x: 1700, y: 940 },
-        { x: 2600, y: 940 },
-        { x: 3500, y: 940 },
-        { x: 4200, y: 940 }
+        // Outdoor : départ
+        { x: -200, y: 400 }, { x: 1300, y: 400 },
+        // Rampe descente vers entrée tunnel
+        { x: 1450, y: 430 },
+        { x: 1600, y: 470 },
+        { x: 1750, y: 500 },
+        // Sol du tunnel (long et plat)
+        { x: 2000, y: 500 },
+        { x: 2400, y: 500 },
+        { x: 2800, y: 500 },
+        { x: 3200, y: 500 },
+        { x: 3600, y: 500 },
+        // Rampe sortie tunnel
+        { x: 3800, y: 460 },
+        { x: 4000, y: 410 },
+        { x: 4200, y: 380 },
+        // Outdoor : descente vers finish
+        { x: 4500, y: 380 },
+        // Bosse de fluidité
+        { x: 4750, y: 360 }, { x: 5000, y: 380 },
+        { x: 5500, y: 380 },
+        { x: 6200, y: 380 }
       ],
       obstacles: [],
-      finishX: 4200,
-      bikeStartY: 40
+      ceilings: [
+        // Plafond du tunnel (à y=370 environ, juste au-dessus de la tête du pilote)
+        // Bike chassis at y=500, head at y~462 (chassis - 38). Ceiling at y=370 leaves ~80px clearance
+        // Une rangée de blocs plafond
+        { x: 1900, y: 380, w: 220, h: 30 },
+        { x: 2150, y: 380, w: 220, h: 30 },
+        { x: 2400, y: 380, w: 220, h: 30 },
+        { x: 2650, y: 380, w: 220, h: 30 },
+        { x: 2900, y: 380, w: 220, h: 30 },
+        { x: 3150, y: 380, w: 220, h: 30 },
+        { x: 3400, y: 380, w: 220, h: 30 },
+        { x: 3650, y: 380, w: 220, h: 30 }
+      ],
+      finishX: 6200,
+      bikeStartY: 340
+    },
+    {
+      tier: 2,
+      name: 'Plateformes',
+      terrain: [
+        // Sol bas (start)
+        { x: -200, y: 400 }, { x: 800, y: 400 },
+        // Rampe up vers plateforme 2
+        { x: 950, y: 360 },
+        { x: 1100, y: 300 },
+        { x: 1250, y: 250 },
+        // Plateforme 2 (haute)
+        { x: 1500, y: 250 }, { x: 2200, y: 250 },
+        // Petit saut
+        { x: 2350, y: 240 },
+        { x: 2400, y: 250, gap: true },
+        // Atterrissage plateforme 3
+        { x: 2700, y: 280 }, { x: 3300, y: 300 },
+        // Descente smooth
+        { x: 3450, y: 340 },
+        { x: 3600, y: 400 },
+        { x: 3750, y: 450 },
+        // Plateforme 4 (basse)
+        { x: 3950, y: 460 }, { x: 4500, y: 460 },
+        // Rampe up finale
+        { x: 4650, y: 420 },
+        { x: 4800, y: 360 },
+        { x: 4950, y: 290 },
+        { x: 5080, y: 230 },
+        { x: 5200, y: 180 },
+        // Plateforme finale (highest, finish)
+        { x: 5400, y: 180 },
+        { x: 6000, y: 180 },
+        { x: 6500, y: 180 }
+      ],
+      obstacles: [],
+      finishX: 6500,
+      bikeStartY: 340
     }
   ];
 
@@ -2702,6 +2729,10 @@
       this.obstaclesGfx = this.add.graphics();
       level.obstacles.forEach(o => this.addObstacle(o));
 
+      // Plafonds (pour les tunnels)
+      this.ceilingsGfx = this.add.graphics();
+      (level.ceilings || []).forEach(c => this.addCeiling(c));
+
       // Ligne d'arrivée
       this.finishX = level.finishX;
       this.addFinishLine(level);
@@ -3229,6 +3260,27 @@
       }
     }
 
+    addCeiling(c) {
+      this.matter.add.rectangle(c.x, c.y, c.w, c.h, {
+        isStatic: true,
+        label: 'ceiling'
+      });
+      const g = this.ceilingsGfx;
+      // Roche sombre
+      g.fillStyle(0x3a2f24);
+      g.fillRect(c.x - c.w / 2, c.y - c.h / 2, c.w, c.h);
+      // Bord plus clair en bas (effet stalactites)
+      g.fillStyle(0x2a1f15);
+      g.fillRect(c.x - c.w / 2, c.y + c.h / 2 - 4, c.w, 4);
+      // Texture rochers
+      for (let i = 0; i < Math.floor(c.w / 30); i++) {
+        const dotX = c.x - c.w / 2 + (i + 0.5) * (c.w / Math.floor(c.w / 30));
+        const dotY = c.y - c.h / 2 + 4 + (i % 2) * 6;
+        g.fillStyle(0x4a3f34);
+        g.fillCircle(dotX, dotY, 2);
+      }
+    }
+
     addObstacle(o) {
       this.matter.add.rectangle(o.x, o.y, o.w, o.h, {
         isStatic: true,
@@ -3347,6 +3399,16 @@
           const v = this.bike.chassis.velocity;
           Matter.Body.setVelocity(this.bike.chassis, { x: v.x * 0.4, y: v.y - 4 });
           this.cameras.main.shake(120, 0.008);
+          if (window.audio) window.audio.playBump();
+        }
+        // Plafond touché : la moto rebondit vers le bas (pas de crash)
+        if (labelStr === 'ceiling-wheel' || labelStr === 'ceiling-chassis') {
+          const v = this.bike.chassis.velocity;
+          Matter.Body.setVelocity(this.bike.chassis, {
+            x: v.x * 0.85,
+            y: Math.max(2, -v.y * 0.4 + 1)
+          });
+          this.cameras.main.shake(60, 0.004);
           if (window.audio) window.audio.playBump();
         }
 
