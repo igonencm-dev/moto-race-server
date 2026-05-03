@@ -48,7 +48,9 @@ function getOrCreateRoom(roomId) {
       mapStartedAt: Date.now(),
       inTransition: false,
       transitionEndsAt: null,
-      players: new Map(),  // ws -> playerData
+      nextMapIdx: null,           // map choisie pour la prochaine session (null = pas encore décidé)
+      nextMapChosenBy: null,       // pseudo du joueur qui a choisi
+      players: new Map(),
       tickInterval: null
     };
     rooms.set(roomId, room);
@@ -56,6 +58,15 @@ function getOrCreateRoom(roomId) {
     log(`📦 Nouveau salon "${roomId}"`);
   }
   return rooms.get(roomId);
+}
+
+function pickRandomMap(currentIdx) {
+  if (NUM_MAPS <= 1) return 0;
+  let next;
+  do {
+    next = Math.floor(Math.random() * NUM_MAPS);
+  } while (next === currentIdx);
+  return next;
 }
 
 function destroyRoom(room) {
@@ -81,10 +92,15 @@ function broadcast(room, msg, excludeWs) {
 }
 
 function startNewMap(room) {
-  room.currentMapIdx = (room.currentMapIdx + 1) % NUM_MAPS;
+  // Utilise la map choisie/random pendant la transition
+  room.currentMapIdx = (room.nextMapIdx !== null && room.nextMapIdx !== undefined)
+    ? room.nextMapIdx
+    : pickRandomMap(room.currentMapIdx);
   room.mapStartedAt = Date.now();
   room.inTransition = false;
   room.transitionEndsAt = null;
+  room.nextMapIdx = null;
+  room.nextMapChosenBy = null;
   // Reset des bests de session
   for (const p of room.players.values()) {
     p.sessionBest = null;
@@ -102,6 +118,9 @@ function startNewMap(room) {
 function endCurrentMap(room) {
   room.inTransition = true;
   room.transitionEndsAt = Date.now() + TRANSITION_MS;
+  // Map suivante par défaut = random (les joueurs peuvent override avec chooseNextMap)
+  room.nextMapIdx = pickRandomMap(room.currentMapIdx);
+  room.nextMapChosenBy = null;
 
   // Top 5 de cette map
   const scores = Array.from(room.players.values())
@@ -115,7 +134,8 @@ function endCurrentMap(room) {
     mapIdx: room.currentMapIdx,
     scores,
     nextMapAt: room.transitionEndsAt,
-    nextMapIdx: (room.currentMapIdx + 1) % NUM_MAPS
+    nextMapIdx: room.nextMapIdx,
+    nextMapChosenBy: null
   });
   log(`🏁 Salon "${room.id}" : fin map ${room.currentMapIdx}, ${scores.length} score(s)`);
 }
@@ -177,6 +197,8 @@ wss.on('connection', (ws, req) => {
         mapDuration: MAP_DURATION_MS,
         inTransition: room.inTransition,
         transitionEndsAt: room.transitionEndsAt,
+        nextMapIdx: room.nextMapIdx,
+        nextMapChosenBy: room.nextMapChosenBy,
         players: Array.from(room.players.values())
           .filter(p => p.id !== player.id)
           .map(p => ({ id: p.id, pseudo: p.pseudo, sessionBest: p.sessionBest }))
@@ -237,6 +259,26 @@ wss.on('connection', (ws, req) => {
           pseudo: player.pseudo
         });
       }
+    } else if (msg.type === 'chooseNextMap') {
+      // Vote pour la prochaine map (uniquement pendant la transition)
+      if (!room.inTransition) return;
+      let chosenIdx;
+      if (msg.mapIdx === 'random') {
+        chosenIdx = pickRandomMap(room.currentMapIdx);
+      } else {
+        const idx = parseInt(msg.mapIdx);
+        if (isNaN(idx) || idx < 0 || idx >= NUM_MAPS) return;
+        chosenIdx = idx;
+      }
+      room.nextMapIdx = chosenIdx;
+      room.nextMapChosenBy = player.pseudo;
+      broadcast(room, {
+        type: 'nextMapChosen',
+        nextMapIdx: chosenIdx,
+        nextMapChosenBy: player.pseudo,
+        wasRandom: msg.mapIdx === 'random'
+      });
+      log(`🗳  ${player.pseudo} a choisi map ${chosenIdx}` + (msg.mapIdx === 'random' ? ' (random)' : ''));
     }
   });
 
