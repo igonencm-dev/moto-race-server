@@ -940,125 +940,231 @@
       finishX: 6500,
       bikeStartY: 140
     },
-    // ============== TIER 2 — ARCADE STYLE ==============
-    // Multi-étages, vrais tunnels (avec plafond), flow naturel sans marche arrière forcée
+    // ============== TIER 2 — ARCADE COMPLET ==============
+    // Boost pads, coins, lave, plafonds tunnels, multi-étages
     {
       tier: 2,
-      name: 'Cascade',
+      name: 'Labyrinthe',
       terrain: [
-        // === Étage 1 (top) : départ ===
-        { x: -200, y: 100 }, { x: 1000, y: 100 },
-        // Rampe smooth descente vers étage 2
-        { x: 1100, y: 130 },
-        { x: 1200, y: 180 },
-        { x: 1280, y: 240 },
-        { x: 1320, y: 290 },
-        // Étage 2
-        { x: 1500, y: 300 }, { x: 2300, y: 300 },
-        // Rampe vers étage 3
-        { x: 2400, y: 330 },
-        { x: 2500, y: 380 },
-        { x: 2580, y: 440 },
-        { x: 2620, y: 490 },
-        // Étage 3
-        { x: 2800, y: 500 }, { x: 3600, y: 500 },
-        // Rampe vers étage 4 (final)
-        { x: 3700, y: 530 },
-        { x: 3800, y: 580 },
-        { x: 3880, y: 640 },
-        { x: 3920, y: 690 },
-        // Étage 4 — finish
-        { x: 4100, y: 700 },
-        // mini bosse pour le flow
-        { x: 4350, y: 680 }, { x: 4600, y: 700 },
-        { x: 5000, y: 700 },
-        { x: 5800, y: 700 }
+        // ÉTAGE 1 (top) - départ
+        { x: -200, y: 100 }, { x: 600, y: 100 },
+        // mini bosse
+        { x: 750, y: 80 }, { x: 900, y: 100 },
+        { x: 1100, y: 100 }, { x: 1500, y: 100 },
+        // Rampe descente vers étage 2 (forcée)
+        { x: 1650, y: 140 },
+        { x: 1780, y: 200 },
+        { x: 1880, y: 260 },
+        { x: 1950, y: 320 },
+        // ÉTAGE 2 (middle) avec piège lave
+        { x: 2150, y: 380 },
+        { x: 2600, y: 380 },
+        // gap avec lave en dessous
+        { x: 2600, y: 380, gap: true },
+        { x: 2900, y: 380 },
+        { x: 3500, y: 380 },
+        // Rampe descente vers étage 3
+        { x: 3650, y: 420 },
+        { x: 3800, y: 480 },
+        { x: 3920, y: 540 },
+        // ÉTAGE 3 (bottom) avec tunnel
+        { x: 4100, y: 600 },
+        { x: 5300, y: 600 },
+        // Sortie en pente legère vers finish
+        { x: 5500, y: 580 },
+        { x: 6000, y: 580 },
+        { x: 6500, y: 580 }
       ],
       obstacles: [],
-      finishX: 5800,
+      ceilings: [
+        // Tunnel sur l'étage 3 (entre x=4200 et x=5200)
+        { x: 4250, y: 510, w: 200, h: 30 },
+        { x: 4500, y: 510, w: 250, h: 30 },
+        { x: 4800, y: 510, w: 250, h: 30 },
+        { x: 5100, y: 510, w: 200, h: 30 }
+      ],
+      boostPads: [
+        // Sur étage 1 (sprint)
+        { x: 1200, y: 88, w: 200, h: 12 },
+        // Dans le tunnel (essentiel pour la sortie)
+        { x: 4900, y: 588, w: 200, h: 12 }
+      ],
+      coins: [
+        // Étage 1 (faciles)
+        { x: 400, y: 70 },
+        { x: 1200, y: 60 },
+        // Au-dessus de la rampe (skill)
+        { x: 1850, y: 230 },
+        // Étage 2 (proche de la lave, attention)
+        { x: 2400, y: 340 },
+        { x: 3200, y: 340 },
+        // Au-dessus du gap (skill)
+        { x: 2750, y: 320 },
+        // Étage 3 dans le tunnel (récompense)
+        { x: 4400, y: 560 },
+        { x: 4700, y: 560 },
+        { x: 5000, y: 560 },
+        // Avant finish
+        { x: 6200, y: 540 }
+      ],
+      hazards: [
+        // Lave dans le gap de l'étage 2
+        { x: 2750, y: 410, w: 280, h: 40 }
+      ],
+      finishX: 6500,
       bikeStartY: 40
     },
     {
       tier: 2,
-      name: 'Le Tunnel',
+      name: 'Skate Park',
       terrain: [
-        // Outdoor : départ
-        { x: -200, y: 400 }, { x: 1300, y: 400 },
-        // Rampe descente vers entrée tunnel
-        { x: 1450, y: 430 },
-        { x: 1600, y: 470 },
-        { x: 1750, y: 500 },
-        // Sol du tunnel (long et plat)
-        { x: 2000, y: 500 },
-        { x: 2400, y: 500 },
-        { x: 2800, y: 500 },
-        { x: 3200, y: 500 },
-        { x: 3600, y: 500 },
-        // Rampe sortie tunnel
-        { x: 3800, y: 460 },
-        { x: 4000, y: 410 },
-        { x: 4200, y: 380 },
-        // Outdoor : descente vers finish
+        // Plat de départ
+        { x: -200, y: 400 }, { x: 600, y: 400 },
+        // Première rampe (boost+saut)
+        { x: 750, y: 380 },
+        { x: 900, y: 340 },
+        { x: 1050, y: 280 },
+        { x: 1180, y: 220 },
+        // Sommet rampe → gap
+        { x: 1180, y: 220, gap: true },
+        // Atterrissage
+        { x: 1700, y: 380 },
+        { x: 2000, y: 400 },
+        // Mini half-pipe
+        { x: 2150, y: 420 },
+        { x: 2350, y: 470 },
+        { x: 2500, y: 480 },
+        { x: 2650, y: 470 },
+        { x: 2850, y: 420 },
+        { x: 3000, y: 400 },
+        // Rampe boost
+        { x: 3150, y: 380 },
+        { x: 3300, y: 340 },
+        { x: 3450, y: 280 },
+        { x: 3600, y: 220 },
+        { x: 3700, y: 180 },
+        { x: 3700, y: 180, gap: true },
+        // Long atterrissage
         { x: 4500, y: 380 },
-        // Bosse de fluidité
-        { x: 4750, y: 360 }, { x: 5000, y: 380 },
-        { x: 5500, y: 380 },
-        { x: 6200, y: 380 }
+        { x: 4900, y: 400 },
+        // Bosses successives
+        { x: 5050, y: 380 }, { x: 5200, y: 400 },
+        { x: 5350, y: 380 }, { x: 5500, y: 400 },
+        // Rampe finale
+        { x: 5700, y: 380 },
+        { x: 5900, y: 340 },
+        { x: 6100, y: 320 },
+        // Finish au sommet
+        { x: 6300, y: 320 },
+        { x: 6800, y: 320 }
       ],
       obstacles: [],
-      ceilings: [
-        // Plafond du tunnel (à y=370 environ, juste au-dessus de la tête du pilote)
-        // Bike chassis at y=500, head at y~462 (chassis - 38). Ceiling at y=370 leaves ~80px clearance
-        // Une rangée de blocs plafond
-        { x: 1900, y: 380, w: 220, h: 30 },
-        { x: 2150, y: 380, w: 220, h: 30 },
-        { x: 2400, y: 380, w: 220, h: 30 },
-        { x: 2650, y: 380, w: 220, h: 30 },
-        { x: 2900, y: 380, w: 220, h: 30 },
-        { x: 3150, y: 380, w: 220, h: 30 },
-        { x: 3400, y: 380, w: 220, h: 30 },
-        { x: 3650, y: 380, w: 220, h: 30 }
+      boostPads: [
+        // Sur la 1ère rampe (essentiel pour clear le gap)
+        { x: 950, y: 328, w: 180, h: 12 },
+        // Sur la 2ème rampe (gros saut)
+        { x: 3400, y: 312, w: 200, h: 12 }
       ],
-      finishX: 6200,
+      coins: [
+        // Au-dessus du 1er gap (skill)
+        { x: 1400, y: 200 },
+        { x: 1500, y: 230 },
+        // Dans le half-pipe
+        { x: 2500, y: 440 },
+        // Au-dessus du 2ème gap (skill, hauteur)
+        { x: 4000, y: 200 },
+        { x: 4150, y: 200 },
+        { x: 4300, y: 250 },
+        // Sur les bosses
+        { x: 5050, y: 350 },
+        { x: 5350, y: 350 },
+        // Avant finish
+        { x: 6500, y: 290 }
+      ],
+      hazards: [],
+      ceilings: [],
+      finishX: 6800,
       bikeStartY: 340
     },
     {
       tier: 2,
-      name: 'Plateformes',
+      name: 'La Mine',
       terrain: [
-        // Sol bas (start)
-        { x: -200, y: 400 }, { x: 800, y: 400 },
-        // Rampe up vers plateforme 2
-        { x: 950, y: 360 },
-        { x: 1100, y: 300 },
-        { x: 1250, y: 250 },
-        // Plateforme 2 (haute)
-        { x: 1500, y: 250 }, { x: 2200, y: 250 },
-        // Petit saut
-        { x: 2350, y: 240 },
-        { x: 2400, y: 250, gap: true },
-        // Atterrissage plateforme 3
-        { x: 2700, y: 280 }, { x: 3300, y: 300 },
-        // Descente smooth
-        { x: 3450, y: 340 },
-        { x: 3600, y: 400 },
-        { x: 3750, y: 450 },
-        // Plateforme 4 (basse)
-        { x: 3950, y: 460 }, { x: 4500, y: 460 },
-        // Rampe up finale
-        { x: 4650, y: 420 },
-        { x: 4800, y: 360 },
-        { x: 4950, y: 290 },
-        { x: 5080, y: 230 },
-        { x: 5200, y: 180 },
-        // Plateforme finale (highest, finish)
-        { x: 5400, y: 180 },
-        { x: 6000, y: 180 },
-        { x: 6500, y: 180 }
+        // Entrée de la mine (légère descente)
+        { x: -200, y: 300 }, { x: 600, y: 320 },
+        { x: 800, y: 360 },
+        { x: 1000, y: 400 },
+        // Tunnel principal (long)
+        { x: 1300, y: 420 },
+        { x: 1700, y: 420 },
+        { x: 1900, y: 420 },
+        // Lave dans le tunnel (gap + lava)
+        { x: 1900, y: 420, gap: true },
+        { x: 2150, y: 420 },
+        { x: 2400, y: 420 },
+        // Tunnel continue
+        { x: 2800, y: 420 },
+        // 2ème pit lave
+        { x: 2800, y: 420, gap: true },
+        { x: 3100, y: 420 },
+        { x: 3500, y: 420 },
+        { x: 3900, y: 420 },
+        // Sortie remontée vers la surface
+        { x: 4100, y: 380 },
+        { x: 4300, y: 320 },
+        { x: 4500, y: 260 },
+        { x: 4700, y: 220 },
+        { x: 4900, y: 200 },
+        // Surface finish
+        { x: 5300, y: 200 },
+        { x: 5800, y: 200 }
       ],
       obstacles: [],
-      finishX: 6500,
-      bikeStartY: 340
+      ceilings: [
+        // Plafond de la mine (suit le tunnel)
+        { x: 1300, y: 320, w: 220, h: 30 },
+        { x: 1550, y: 320, w: 220, h: 30 },
+        { x: 1800, y: 320, w: 220, h: 30 },
+        { x: 2050, y: 320, w: 220, h: 30 },
+        { x: 2300, y: 320, w: 220, h: 30 },
+        { x: 2550, y: 320, w: 220, h: 30 },
+        { x: 2800, y: 320, w: 220, h: 30 },
+        { x: 3050, y: 320, w: 220, h: 30 },
+        { x: 3300, y: 320, w: 220, h: 30 },
+        { x: 3550, y: 320, w: 220, h: 30 },
+        { x: 3800, y: 320, w: 220, h: 30 }
+      ],
+      boostPads: [
+        // Avant le 1er pit de lave (skill : timer le saut)
+        { x: 1750, y: 408, w: 180, h: 12 },
+        // Avant le 2ème pit
+        { x: 2700, y: 408, w: 150, h: 12 }
+      ],
+      coins: [
+        // Pré-tunnel
+        { x: 400, y: 280 },
+        // Au-dessus du 1er pit lave (récompense skill)
+        { x: 2000, y: 380 },
+        // Dans le tunnel
+        { x: 2500, y: 380 },
+        // Au-dessus du 2ème pit
+        { x: 2950, y: 380 },
+        { x: 3300, y: 380 },
+        { x: 3700, y: 380 },
+        // Pendant la remontée
+        { x: 4400, y: 280 },
+        { x: 4700, y: 200 },
+        // Avant finish
+        { x: 5500, y: 170 }
+      ],
+      hazards: [
+        // Lave dans le 1er pit
+        { x: 2025, y: 450, w: 240, h: 50 },
+        // Lave dans le 2ème pit
+        { x: 2950, y: 450, w: 280, h: 50 }
+      ],
+      finishX: 5800,
+      bikeStartY: 240
     }
   ];
 
@@ -2733,6 +2839,21 @@
       this.ceilingsGfx = this.add.graphics();
       (level.ceilings || []).forEach(c => this.addCeiling(c));
 
+      // Boost pads (zones orange qui propulsent)
+      this.boostPadGfx = this.add.graphics();
+      (level.boostPads || []).forEach(bp => this.addBoostPad(bp));
+
+      // Lava / hazards (crash instantané)
+      this.hazardsGfx = this.add.graphics();
+      this.hazardTime = 0;
+      this.hazards = [];
+      (level.hazards || []).forEach(h => this.addHazard(h));
+
+      // Coins (collectibles → bonus -0.5s)
+      this.coins = [];
+      this.coinsGfx = this.add.graphics();
+      (level.coins || []).forEach(c => this.addCoin(c));
+
       // Ligne d'arrivée
       this.finishX = level.finishX;
       this.addFinishLine(level);
@@ -3260,6 +3381,90 @@
       }
     }
 
+    addBoostPad(bp) {
+      this.matter.add.rectangle(bp.x, bp.y, bp.w, bp.h, {
+        isStatic: true, isSensor: true, label: 'boostpad'
+      });
+      const g = this.boostPadGfx;
+      // Fond orange vif
+      g.fillStyle(0xff6622);
+      g.fillRoundedRect(bp.x - bp.w / 2, bp.y - bp.h / 2, bp.w, bp.h, 4);
+      g.lineStyle(2, 0xffaa44);
+      g.strokeRoundedRect(bp.x - bp.w / 2, bp.y - bp.h / 2, bp.w, bp.h, 4);
+      // Flèches blanches
+      g.fillStyle(0xffffff);
+      const arrowSpacing = 35;
+      const numArrows = Math.max(1, Math.floor(bp.w / arrowSpacing));
+      const startAx = bp.x - bp.w / 2 + (bp.w - (numArrows - 1) * arrowSpacing) / 2;
+      for (let i = 0; i < numArrows; i++) {
+        const ax = startAx + i * arrowSpacing;
+        g.fillTriangle(
+          ax - 7, bp.y - 6,
+          ax + 7, bp.y,
+          ax - 7, bp.y + 6
+        );
+      }
+    }
+
+    addHazard(h) {
+      this.matter.add.rectangle(h.x, h.y, h.w, h.h, {
+        isStatic: true, isSensor: true, label: 'hazard'
+      });
+      this.hazards.push(h);
+    }
+
+    drawHazards() {
+      const g = this.hazardsGfx;
+      g.clear();
+      this.hazards.forEach(h => {
+        // Lave principale
+        g.fillStyle(0xcc2200);
+        g.fillRect(h.x - h.w / 2, h.y - h.h / 2, h.w, h.h);
+        // Surface plus chaude (orange)
+        g.fillStyle(0xff5500);
+        g.fillRect(h.x - h.w / 2, h.y - h.h / 2, h.w, Math.min(8, h.h * 0.25));
+        // Bulles animées
+        const t = this.hazardTime;
+        for (let i = 0; i < Math.floor(h.w / 25); i++) {
+          const phase = t + i * 0.7;
+          const bx = h.x - h.w / 2 + (i + 0.5) * (h.w / Math.floor(h.w / 25));
+          const bobY = h.y - h.h / 2 + 4 + (Math.sin(phase) * 2);
+          g.fillStyle(0xffcc00);
+          g.fillCircle(bx, bobY, 2 + (Math.sin(phase * 1.3) + 1));
+        }
+      });
+    }
+
+    addCoin(c) {
+      const body = this.matter.add.circle(c.x, c.y, 14, {
+        isStatic: true, isSensor: true, label: 'coin'
+      });
+      const coin = { x: c.x, y: c.y, body, collected: false, phase: Math.random() * Math.PI * 2 };
+      body._coin = coin;
+      this.coins.push(coin);
+    }
+
+    drawCoins(time) {
+      const g = this.coinsGfx;
+      g.clear();
+      this.coins.forEach(c => {
+        if (c.collected) return;
+        // Animation rotation : la pièce tourne donc sa largeur varie
+        const t = time / 100 + c.phase;
+        const sw = Math.abs(Math.cos(t)) * 0.95 + 0.05;
+        const w = 22 * sw;
+        // Disque jaune
+        g.fillStyle(0xffdd44);
+        g.fillEllipse(c.x, c.y, w, 22);
+        // Bordure dorée
+        g.lineStyle(2, 0xff9900);
+        g.strokeEllipse(c.x, c.y, w, 22);
+        // Reflet brillant
+        g.fillStyle(0xffffaa, 0.7);
+        g.fillEllipse(c.x - w * 0.15, c.y - 4, w * 0.4, 6);
+      });
+    }
+
     addCeiling(c) {
       this.matter.add.rectangle(c.x, c.y, c.w, c.h, {
         isStatic: true,
@@ -3410,6 +3615,36 @@
           });
           this.cameras.main.shake(60, 0.004);
           if (window.audio) window.audio.playBump();
+        }
+
+        // BOOST PAD : applique une grosse impulsion forward
+        if (labelStr === 'boostpad-wheel' || labelStr === 'boostpad-chassis') {
+          const a = this.bike.chassis.angle;
+          const v = this.bike.chassis.velocity;
+          // Boost vers l'avant + petit lift
+          Matter.Body.setVelocity(this.bike.chassis, {
+            x: Math.max(v.x + 7, 9),
+            y: v.y - 3
+          });
+          this.cameras.main.flash(80, 255, 200, 100);
+          if (window.audio) window.audio.playFlip();
+        }
+
+        // COIN : collecte → -0.5s + son
+        if (labelStr === 'coin-wheel' || labelStr === 'coin-chassis') {
+          const coinBody = (pair.bodyA.label === 'coin') ? pair.bodyA : pair.bodyB;
+          if (coinBody._coin && !coinBody._coin.collected) {
+            coinBody._coin.collected = true;
+            this.flipBonus += 0.5;
+            this.showFloatingText('💰  +0.5s', '#ffdd44');
+            if (window.audio) window.audio.playFlip();
+            try { this.matter.world.remove(coinBody); } catch (e) {}
+          }
+        }
+
+        // HAZARD (lave) : crash instantané
+        if (labelStr === 'hazard-wheel' || labelStr === 'hazard-chassis') {
+          if (!this.crashed && !this.finished) this.crash();
         }
 
         // arrivée
@@ -3654,6 +3889,14 @@
       this.drawBike(this.bike, this.bikeGfx, 0xff5533);
       if (this.ghostState && this.ghostGfx) this.drawGhost();
       if (this.ghosts && this.ghostsGfx) this.drawAllGhosts();
+
+      // Animer coins (rotation visuelle)
+      if (this.coins && this.coins.length) this.drawCoins(time);
+      // Animer lave (bulles)
+      if (this.hazards && this.hazards.length) {
+        this.hazardTime = time / 200;
+        this.drawHazards();
+      }
 
       // chute en dehors de la carte
       if (this.bike.chassis.position.y > 1500 && !this.crashed && !this.finished) {
