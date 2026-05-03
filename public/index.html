@@ -2762,6 +2762,9 @@
       this.challengeEndAt = data.challengeEndAt || null;
       this.peerPseudo = data.peerPseudo || null;
       this.peerSessionBest = data.peerSessionBest !== undefined ? data.peerSessionBest : null;
+      // Replay : meilleure run enregistrée (préservée entre restarts) - { time, frames, level, pseudo }
+      this.bestRunReplay = data.bestRunReplay || null;
+      this.peerBestReplay = data.peerBestReplay || null;
       // Séquence de maps (BO1/BO2/BO3)
       this.mapSequence = data.mapSequence || [this.levelIndex];
       this.durationPerMap = data.durationPerMap || 300;
@@ -2900,6 +2903,11 @@
       this.cumulativeRotation = 0;
       this.flipMessages = [];
       this.countdownStart = this.time.now;
+
+      // === REPLAY : enregistrement de la run en cours (multi P2P uniquement) ===
+      this.recordingFrames = [];           // [{t, x, y, a, wba, wfa}]
+      this.lastRecordTime = 0;
+      this.RECORD_INTERVAL_MS = 50;        // 20 fps suffisent pour un replay fluide
 
       // === MODE CHALLENGE (solo + multi P2P + serveur) ===
       this.challengeMode = this.mode === 'solo' || this.mode === 'multi-host' || this.mode === 'multi-join' || this.mode === 'server';
@@ -4040,6 +4048,21 @@
         }
       }
 
+      // === REPLAY : enregistrement des frames pendant la run (multi P2P) ===
+      if (this.conn && this.startTime !== null && !this.finished && !this.crashed) {
+        if (time - this.lastRecordTime >= this.RECORD_INTERVAL_MS) {
+          this.recordingFrames.push({
+            t: time - this.startTime,
+            x: this.bike.chassis.position.x,
+            y: this.bike.chassis.position.y,
+            a: this.bike.chassis.angle,
+            wba: this.bike.wheelBack.angle,
+            wfa: this.bike.wheelFront.angle
+          });
+          this.lastRecordTime = time;
+        }
+      }
+
       // === Sync mode serveur ===
       if (this.mode === 'server' && ServerConn.connected) {
         if (!this._lastSent || time - this._lastSent > 33) {
@@ -4165,6 +4188,16 @@
             sessionBest: this.sessionBestTime
           });
         } catch (e) {}
+
+        // Envoie le replay de la meilleure run de cette map
+        if (this.bestRunReplay) {
+          try {
+            this.conn.send({
+              type: 'replay',
+              replay: this.bestRunReplay
+            });
+          } catch (e) {}
+        }
       }
 
       // Enregistre le résultat de cette map dans la séquence
@@ -4172,7 +4205,9 @@
         mapIndex: this.levelIndex,
         mySessionBest: this.sessionBestTime,
         peerSessionBest: this.peerSessionBest,
-        runCount: this.runCount
+        runCount: this.runCount,
+        myReplay: this.bestRunReplay,
+        peerReplay: this.peerBestReplay
       }];
 
       const isLastMap = this.currentMapIdx >= this.mapSequence.length - 1;
@@ -4187,6 +4222,8 @@
         myPseudo: Player.getName() || '?',
         peerPseudo: this.peerPseudo,
         peerSessionBest: this.peerSessionBest,
+        myReplay: this.bestRunReplay,
+        peerReplay: this.peerBestReplay,
         peer: this.peer,
         conn: this.conn,
         // Séquence
@@ -4222,6 +4259,11 @@
         }
       } else if (data.type === 'finished') {
         this.opponentFinishTime = data.time;
+      } else if (data.type === 'replay') {
+        // Le peer envoie son meilleur replay de la map
+        if (data.replay && data.replay.frames && data.replay.frames.length > 0) {
+          this.peerBestReplay = data.replay;
+        }
       }
     }
 
@@ -4692,6 +4734,8 @@
               cachedTop: this.cachedTop,
               peerPseudo: this.peerPseudo,
               peerSessionBest: this.peerSessionBest,
+              bestRunReplay: this.bestRunReplay,
+              peerBestReplay: this.peerBestReplay,
               mapSequence: this.mapSequence,
               durationPerMap: this.durationPerMap,
               currentMapIdx: this.currentMapIdx,
@@ -4731,6 +4775,15 @@
       // Best de la session (challenge)
       if (this.sessionBestTime === null || this.elapsed < this.sessionBestTime) {
         this.sessionBestTime = this.elapsed;
+        // Sauvegarde du replay (multi P2P uniquement)
+        if (this.conn && this.recordingFrames.length > 0) {
+          this.bestRunReplay = {
+            time: this.elapsed,
+            frames: this.recordingFrames.slice(),
+            level: this.levelIndex,
+            pseudo: Player.getName()
+          };
+        }
       }
       // Push score sur le leaderboard online (solo + multi + server)
       const pseudo = Player.getName();
@@ -4788,6 +4841,8 @@
               cachedTop: this.cachedTop,
               peerPseudo: this.peerPseudo,
               peerSessionBest: this.peerSessionBest,
+              bestRunReplay: this.bestRunReplay,
+              peerBestReplay: this.peerBestReplay,
               mapSequence: this.mapSequence,
               durationPerMap: this.durationPerMap,
               currentMapIdx: this.currentMapIdx,
@@ -4936,6 +4991,8 @@
       this.myPseudo = data.myPseudo || '?';
       this.peerPseudo = data.peerPseudo;
       this.peerSessionBest = data.peerSessionBest !== undefined ? data.peerSessionBest : null;
+      this.myReplay = data.myReplay || null;
+      this.peerReplay = data.peerReplay || null;
       this.peer = data.peer;
       this.conn = data.conn;
       // Séquence BO
@@ -5202,11 +5259,30 @@
         ).setOrigin(0.5).setScrollFactor(0);
       });
 
-      this.makeButton(w / 2, h / 2 + 170, 'Retour menu', () => {
-        if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
-        this.scene.stop('Game');
-        this.scene.start('Menu');
-      });
+      // Bouton replay du gagnant overall si dispo
+      const boWinnerReplay = this.getBOWinnerReplay();
+      if (boWinnerReplay) {
+        this.makeButton(w / 2, h / 2 + 150, '▶  Voir replay du vainqueur', () => {
+          this.scene.stop('Game');
+          this.scene.start('Replay', {
+            replay: boWinnerReplay,
+            level: boWinnerReplay.level,
+            returnTo: 'Menu',
+            peer: this.peer
+          });
+        });
+        this.makeButton(w / 2, h / 2 + 200, 'Retour menu', () => {
+          if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+          this.scene.stop('Game');
+          this.scene.start('Menu');
+        });
+      } else {
+        this.makeButton(w / 2, h / 2 + 170, 'Retour menu', () => {
+          if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+          this.scene.stop('Game');
+          this.scene.start('Menu');
+        });
+      }
     }
 
     renderBOSolo(w, h) {
@@ -5322,11 +5398,64 @@
         font: 'bold 22px sans-serif', color: '#666'
       }).setOrigin(0.5).setScrollFactor(0);
 
-      this.makeButton(w / 2, h / 2 + 130, 'Retour menu', () => {
-        if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
-        this.scene.stop('Game');
-        this.scene.start('Menu');
+      // Bouton replay du gagnant (si replay dispo)
+      const winnerReplay = this.getWinnerReplay();
+      if (winnerReplay) {
+        this.makeButton(w / 2, h / 2 + 110, '▶  Voir le replay du vainqueur', () => {
+          this.scene.stop('Game');
+          this.scene.start('Replay', {
+            replay: winnerReplay,
+            level: this.level,
+            returnTo: 'Menu',
+            peer: this.peer
+          });
+        });
+        this.makeButton(w / 2, h / 2 + 165, 'Retour menu', () => {
+          if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+          this.scene.stop('Game');
+          this.scene.start('Menu');
+        });
+      } else {
+        this.makeButton(w / 2, h / 2 + 130, 'Retour menu', () => {
+          if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+          this.scene.stop('Game');
+          this.scene.start('Menu');
+        });
+      }
+    }
+
+    // Renvoie le replay du gagnant de la map courante (myReplay vs peerReplay)
+    getWinnerReplay() {
+      if (this.sessionBest !== null && this.peerSessionBest !== null) {
+        return this.sessionBest < this.peerSessionBest ? this.myReplay : this.peerReplay;
+      }
+      if (this.sessionBest !== null) return this.myReplay;
+      if (this.peerSessionBest !== null) return this.peerReplay;
+      return null;
+    }
+
+    // Renvoie le replay du gagnant overall du BO (cumul de wins)
+    getBOWinnerReplay() {
+      let myWins = 0, peerWins = 0;
+      let myBestTime = Infinity, peerBestTime = Infinity;
+      let myBestReplay = null, peerBestReplay = null;
+      this.results.forEach(r => {
+        if (r.mySessionBest !== null && (r.peerSessionBest === null || r.mySessionBest < r.peerSessionBest)) myWins++;
+        else if (r.peerSessionBest !== null && (r.mySessionBest === null || r.peerSessionBest < r.mySessionBest)) peerWins++;
+        // Garde le meilleur replay de chaque
+        if (r.myReplay && r.mySessionBest !== null && r.mySessionBest < myBestTime) {
+          myBestTime = r.mySessionBest; myBestReplay = r.myReplay;
+        }
+        if (r.peerReplay && r.peerSessionBest !== null && r.peerSessionBest < peerBestTime) {
+          peerBestTime = r.peerSessionBest; peerBestReplay = r.peerReplay;
+        }
       });
+      if (myWins > peerWins) return myBestReplay;
+      if (peerWins > myWins) return peerBestReplay;
+      // Égalité : prend le meilleur temps absolu
+      if (myBestTime < peerBestTime) return myBestReplay;
+      if (peerBestTime < myBestTime) return peerBestReplay;
+      return null;
     }
 
     async renderSoloSingle(w, h) {
@@ -5427,6 +5556,470 @@
   }
 
   // ===========================================================
+  // REPLAY SCENE — lecture d'une run enregistrée (multi P2P)
+  // ===========================================================
+  class ReplayScene extends Phaser.Scene {
+    constructor() { super('Replay'); }
+
+    init(data) {
+      this.replay = data.replay;                    // { time, frames, level, pseudo }
+      this.levelIndex = data.level !== undefined ? data.level : (this.replay && this.replay.level) || 0;
+      this.returnTo = data.returnTo || 'Menu';
+      this.peer = data.peer || null;
+    }
+
+    create() {
+      const level = LEVELS[this.levelIndex];
+      const w = this.scale.width;
+      const h = this.scale.height;
+
+      this.cameras.main.setBackgroundColor('#87CEEB');
+
+      // Décor d'arrière-plan (ciel/montagnes)
+      this.drawBackground();
+
+      // Terrain (visuel uniquement)
+      this.terrainGfx = this.add.graphics();
+      this.drawTerrainVisual(level.terrain);
+
+      // Obstacles (visuels)
+      this.obstaclesGfx = this.add.graphics();
+      level.obstacles.forEach(o => this.drawObstacleVisual(o));
+
+      // Plafonds
+      this.ceilingsGfx = this.add.graphics();
+      if (level.ceilings && level.ceilings.length > 0) {
+        if (level.ceilings[0].w !== undefined) {
+          level.ceilings.forEach(c => this.drawRectCeilingVisual(c));
+        } else {
+          this.drawCeilingPathVisual(level.ceilings);
+        }
+      }
+
+      // Décor (flèches, murs, etc.)
+      this.decorGfx = this.add.graphics();
+      if (level.decor) level.decor.forEach(d => this.drawDecorVisual(d));
+
+      // Coins et hazards (statiques visuellement)
+      this.coinsGfx = this.add.graphics();
+      this.hazardsGfx = this.add.graphics();
+      this.boostPadGfx = this.add.graphics();
+      if (level.coins) level.coins.forEach(c => this.drawCoinVisual(c));
+      if (level.hazards) level.hazards.forEach(haz => this.drawHazardVisual(haz));
+      if (level.boostPads) level.boostPads.forEach(bp => this.drawBoostPadVisual(bp));
+
+      // Ligne d'arrivée
+      this.drawFinishLineVisual(level);
+
+      // Caméra
+      this.cameras.main.setBounds(-300, -1000, level.finishX + 700, 2200);
+
+      // Bike (visuel uniquement, pas de physique)
+      this.bikeGfx = this.add.graphics();
+
+      // === Lecture du replay ===
+      this.replayStartTime = this.time.now;
+      this.replayFrames = (this.replay && this.replay.frames) || [];
+      this.replaySpeed = 1;
+      this.replayPaused = false;
+
+      // === HUD ===
+      const overlay = this.add.rectangle(0, 0, w, 60, 0x000000, 0.6).setOrigin(0).setScrollFactor(0);
+      this.add.text(20, 20, '▶  REPLAY', {
+        font: 'bold 16px sans-serif', color: '#44ff66'
+      }).setScrollFactor(0);
+
+      const author = (this.replay && this.replay.pseudo) || '?';
+      const replayTime = this.replay ? this.replay.time.toFixed(2) + 's' : '-';
+      this.add.text(120, 22, `${author}  —  ${LEVELS[this.levelIndex].name}  —  ${replayTime}`, {
+        font: 'bold 13px monospace', color: '#fff'
+      }).setScrollFactor(0);
+
+      // Timer du replay
+      this.replayTimerText = this.add.text(w - 20, 22, '0.00s', {
+        font: 'bold 18px monospace', color: '#ffdd44'
+      }).setOrigin(1, 0).setScrollFactor(0);
+
+      // Boutons en bas
+      this.makeButton(w / 2 - 130, h - 40, '⏮  Recommencer', () => {
+        this.replayStartTime = this.time.now;
+      });
+      this.makeButton(w / 2, h - 40, this.replayPaused ? '▶ Play' : '❚❚ Pause', () => {
+        this.replayPaused = !this.replayPaused;
+        this.pauseTime = this.replayPaused ? (this.time.now - this.replayStartTime) : null;
+        this.pauseBtn.setText(this.replayPaused ? '▶ Play' : '❚❚ Pause');
+        if (!this.replayPaused && this.pauseTime !== null) {
+          this.replayStartTime = this.time.now - this.pauseTime;
+        }
+      }, true);
+      this.makeButton(w / 2 + 130, h - 40, '✕  Fermer', () => {
+        this.scene.start(this.returnTo);
+      });
+    }
+
+    update(time, delta) {
+      if (!this.replayFrames.length) return;
+      const elapsed = this.replayPaused
+        ? (this.pauseTime !== null ? this.pauseTime : 0)
+        : (time - this.replayStartTime);
+
+      // Boucle : si on dépasse la dernière frame, repart au début
+      const lastFrameT = this.replayFrames[this.replayFrames.length - 1].t;
+      const t = elapsed % (lastFrameT + 1500); // pause de 1.5s à la fin avant de relancer
+
+      this.replayTimerText.setText((Math.min(t, lastFrameT) / 1000).toFixed(2) + 's');
+
+      // Trouve les 2 frames qui encadrent t et interpole
+      let frame = this.replayFrames[0];
+      let nextFrame = frame;
+      for (let i = 0; i < this.replayFrames.length - 1; i++) {
+        if (this.replayFrames[i].t <= t && this.replayFrames[i + 1].t >= t) {
+          frame = this.replayFrames[i];
+          nextFrame = this.replayFrames[i + 1];
+          break;
+        }
+        if (i === this.replayFrames.length - 2) {
+          frame = this.replayFrames[i + 1];
+          nextFrame = frame;
+        }
+      }
+
+      let fx = frame.x, fy = frame.y, fa = frame.a, fwba = frame.wba, fwfa = frame.wfa;
+      if (nextFrame !== frame && nextFrame.t > frame.t) {
+        const k = (t - frame.t) / (nextFrame.t - frame.t);
+        fx = frame.x + (nextFrame.x - frame.x) * k;
+        fy = frame.y + (nextFrame.y - frame.y) * k;
+        // Angle interpolation (gestion des sauts de 2π)
+        let da = nextFrame.a - frame.a;
+        if (da > Math.PI) da -= 2 * Math.PI;
+        if (da < -Math.PI) da += 2 * Math.PI;
+        fa = frame.a + da * k;
+        fwba = frame.wba + (nextFrame.wba - frame.wba) * k;
+        fwfa = frame.wfa + (nextFrame.wfa - frame.wfa) * k;
+      }
+
+      // Construit un faux "bike" pour drawBike
+      const cos = Math.cos(fa), sin = Math.sin(fa);
+      const fakeBike = {
+        chassis: { position: { x: fx, y: fy }, angle: fa },
+        wheelBack: {
+          position: { x: fx + (-32) * cos - 18 * sin, y: fy + (-32) * sin + 18 * cos },
+          angle: fwba
+        },
+        wheelFront: {
+          position: { x: fx + 32 * cos - 18 * sin, y: fy + 32 * sin + 18 * cos },
+          angle: fwfa
+        }
+      };
+
+      this.drawBike(fakeBike, this.bikeGfx, 0xffaa44);
+
+      // Caméra suit le bike
+      this.cameras.main.centerOn(fx + 60, fy - 50);
+    }
+
+    // ===== HELPERS VISUEL (versions sans physique) =====
+
+    drawBackground() {
+      const level = LEVELS[this.levelIndex];
+      const isCave = level.tier === 2;
+      const w = this.scale.width;
+      const h = this.scale.height;
+      if (isCave) {
+        this.cameras.main.setBackgroundColor('#1a0e0a');
+        const g = this.add.graphics();
+        g.fillStyle(0x1a0e0a);
+        g.fillRect(-2000, -1000, 12000, 3000);
+      } else {
+        const g = this.add.graphics();
+        // Soleil
+        g.fillStyle(0xffeebb, 0.9);
+        g.fillCircle(800, 100, 50);
+        g.setScrollFactor(0.3);
+        // Montagnes au fond
+        const mountains = this.add.graphics();
+        mountains.setScrollFactor(0.4);
+        mountains.fillStyle(0x556677);
+        for (let x = -2000; x < 12000; x += 400) {
+          mountains.fillTriangle(x, 500, x + 200, 200, x + 400, 500);
+        }
+      }
+    }
+
+    drawTerrainVisual(points) {
+      const g = this.terrainGfx;
+      // Découpe en chunks (gap)
+      const chunks = [];
+      let chunk = [];
+      for (let i = 0; i < points.length; i++) {
+        chunk.push(points[i]);
+        if (points[i].gap && i < points.length - 1) {
+          chunks.push(chunk);
+          chunk = [];
+        }
+      }
+      if (chunk.length) chunks.push(chunk);
+
+      g.fillStyle(0x4a3a2a);
+      for (const c of chunks) {
+        if (c.length < 2) continue;
+        let minX = c[0].x, maxX = c[0].x;
+        for (const p of c) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+        }
+        g.beginPath();
+        g.moveTo(minX, 1500);
+        g.lineTo(c[0].x, c[0].y);
+        c.forEach(p => g.lineTo(p.x, p.y));
+        g.lineTo(maxX, 1500);
+        g.closePath();
+        g.fillPath();
+      }
+      // Bande d'herbe
+      g.fillStyle(0x55aa44);
+      for (let i = 0; i < points.length - 1; i++) {
+        const origP1 = points[i];
+        if (origP1.gap) continue;
+        let p1 = origP1;
+        let p2 = points[i + 1];
+        if (p2.x < p1.x) { const tmp = p1; p1 = p2; p2 = tmp; }
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        if (dx === 0 && dy === 0) continue;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        const cx = (p1.x + p2.x) / 2;
+        const cy = (p1.y + p2.y) / 2;
+        const halfL = len / 2, halfH = 5;
+        const cs = Math.cos(angle), sn = Math.sin(angle);
+        const corners = [[-halfL, -halfH], [halfL, -halfH], [halfL, halfH], [-halfL, halfH]]
+          .map(([x, y]) => [cx + x * cs - y * sn, cy + x * sn + y * cs]);
+        g.beginPath();
+        g.moveTo(corners[0][0], corners[0][1]);
+        corners.forEach(c => g.lineTo(c[0], c[1]));
+        g.closePath();
+        g.fillPath();
+      }
+    }
+
+    drawObstacleVisual(o) {
+      const g = this.obstaclesGfx;
+      g.fillStyle(0xaa3333);
+      g.fillRect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h);
+      g.lineStyle(2, 0x661111);
+      g.strokeRect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h);
+      g.fillStyle(0xffdd00);
+      g.fillRect(o.x - o.w / 2 + 4, o.y - 4, o.w - 8, 3);
+    }
+
+    drawRectCeilingVisual(c) {
+      const g = this.ceilingsGfx;
+      g.fillStyle(0x4a3a2a);
+      g.fillRect(c.x - c.w / 2, c.y - c.h / 2, c.w, c.h);
+    }
+
+    drawCeilingPathVisual(points) {
+      const g = this.ceilingsGfx;
+      const chunks = [];
+      let chunk = [];
+      for (let i = 0; i < points.length; i++) {
+        chunk.push(points[i]);
+        if (points[i].gap && i < points.length - 1) {
+          chunks.push(chunk);
+          chunk = [];
+        }
+      }
+      if (chunk.length) chunks.push(chunk);
+
+      g.fillStyle(0x4a3a2a);
+      for (const c of chunks) {
+        if (c.length < 2) continue;
+        let minX = c[0].x, maxX = c[0].x;
+        for (const p of c) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+        }
+        g.beginPath();
+        g.moveTo(minX, -800);
+        g.lineTo(c[0].x, c[0].y);
+        c.forEach(p => g.lineTo(p.x, p.y));
+        g.lineTo(maxX, -800);
+        g.closePath();
+        g.fillPath();
+      }
+      // Bande d'herbe verte sur la face inférieure
+      g.fillStyle(0x55aa44);
+      for (const c of chunks) {
+        for (let i = 0; i < c.length - 1; i++) {
+          const p1 = c[i], p2 = c[i + 1];
+          if (p2.x === p1.x && p2.y === p1.y) continue;
+          const dx = p2.x - p1.x, dy = p2.y - p1.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          const angle = Math.atan2(dy, dx);
+          const cx = (p1.x + p2.x) / 2;
+          const cy = (p1.y + p2.y) / 2;
+          const halfL = len / 2, halfH = 4;
+          const cs = Math.cos(angle), sn = Math.sin(angle);
+          const corners = [[-halfL, -halfH], [halfL, -halfH], [halfL, halfH], [-halfL, halfH]]
+            .map(([x, y]) => [cx + x * cs - y * sn, cy + x * sn + y * cs]);
+          g.beginPath();
+          g.moveTo(corners[0][0], corners[0][1]);
+          corners.forEach(cn => g.lineTo(cn[0], cn[1]));
+          g.closePath();
+          g.fillPath();
+        }
+      }
+    }
+
+    drawDecorVisual(d) {
+      const g = this.decorGfx;
+      if (d.type === 'arrow') {
+        const angle = ({ 'right': 0, 'down': Math.PI / 2, 'left': Math.PI, 'up': -Math.PI / 2,
+          'down-right': Math.PI / 4, 'down-left': 3 * Math.PI / 4 })[d.dir] || 0;
+        const cs = Math.cos(angle), sn = Math.sin(angle);
+        const len = d.size || 70, h = len * 0.18;
+        const tr = (vx, vy) => [d.x + vx * cs - vy * sn, d.y + vx * sn + vy * cs];
+        g.fillStyle(0x44dd44);
+        const r = [[-len / 2, -h], [len * 0.25, -h], [len * 0.25, h], [-len / 2, h]].map(([vx, vy]) => tr(vx, vy));
+        g.beginPath(); g.moveTo(r[0][0], r[0][1]); r.forEach(p => g.lineTo(p[0], p[1])); g.closePath(); g.fillPath();
+        const t1 = tr(len * 0.25, -h * 2.2), t2 = tr(len * 0.25, h * 2.2), t3 = tr(len / 2, 0);
+        g.fillTriangle(t1[0], t1[1], t2[0], t2[1], t3[0], t3[1]);
+      } else if (d.type === 'wall') {
+        g.fillStyle(0x4a3a2a);
+        g.fillRect(d.x - d.w / 2, d.y, d.w, d.h);
+        g.fillStyle(0x55aa44);
+        g.fillRect(d.x + d.w / 2 - 3, d.y, 3, d.h);
+      } else if (d.type === 'rockCeiling') {
+        g.fillStyle(0x4a3a2a);
+        g.fillRect(d.x - d.w / 2, d.y, d.w, d.h);
+      }
+    }
+
+    drawCoinVisual(c) {
+      const g = this.coinsGfx;
+      g.fillStyle(0xffdd44);
+      g.fillCircle(c.x, c.y, 11);
+      g.lineStyle(2, 0xff9900);
+      g.strokeCircle(c.x, c.y, 11);
+    }
+
+    drawHazardVisual(h) {
+      const g = this.hazardsGfx;
+      g.fillStyle(0xcc2200);
+      g.fillRect(h.x - h.w / 2, h.y - h.h / 2, h.w, h.h);
+      g.fillStyle(0xff5500);
+      g.fillRect(h.x - h.w / 2, h.y - h.h / 2, h.w, Math.min(8, h.h * 0.25));
+    }
+
+    drawBoostPadVisual(bp) {
+      const g = this.boostPadGfx;
+      g.fillStyle(0xff6622);
+      g.fillRoundedRect(bp.x - bp.w / 2, bp.y - bp.h / 2, bp.w, bp.h, 4);
+    }
+
+    drawFinishLineVisual(level) {
+      if (level.finishX === undefined) return;
+      const lastP = level.terrain[level.terrain.length - 1];
+      const groundY = lastP.y;
+      const g = this.add.graphics();
+      g.fillStyle(0xeeeeee);
+      g.fillRect(level.finishX - 3, groundY - 500, 6, 500);
+      // Drapeau damier
+      const flagW = 60, flagH = 50;
+      const flagY = groundY - 490;
+      const cells = 5;
+      const cellW = flagW / cells, cellH = flagH / cells;
+      for (let r = 0; r < cells; r++) {
+        for (let c = 0; c < cells; c++) {
+          g.fillStyle((r + c) % 2 === 0 ? 0x000000 : 0xffffff);
+          g.fillRect(level.finishX + 3 + c * cellW, flagY + r * cellH, cellW, cellH);
+        }
+      }
+    }
+
+    // Réutilise la même logique que GameScene.drawBike
+    drawBike(bike, gfx, color) {
+      gfx.clear();
+      const c = bike.chassis;
+      const cos = Math.cos(c.angle), sin = Math.sin(c.angle);
+      const local = (lx, ly) => ({ x: c.position.x + lx * cos - ly * sin, y: c.position.y + lx * sin + ly * cos });
+
+      // Suspensions
+      gfx.lineStyle(5, 0x1a1a1a);
+      const susBack = local(-32, 5), susFront = local(32, 5);
+      gfx.lineBetween(susBack.x, susBack.y, bike.wheelBack.position.x, bike.wheelBack.position.y);
+      gfx.lineBetween(susFront.x, susFront.y, bike.wheelFront.position.x, bike.wheelFront.position.y);
+
+      // Roues
+      const drawWheel = (wheel) => {
+        const cx = wheel.position.x, cy = wheel.position.y;
+        gfx.fillStyle(0x0a0a0a); gfx.fillCircle(cx, cy, 18);
+        gfx.lineStyle(2, 0x000000); gfx.strokeCircle(cx, cy, 18);
+        gfx.fillStyle(0x999999); gfx.fillCircle(cx, cy, 11);
+        gfx.lineStyle(2, 0xdddddd);
+        for (let i = 0; i < 6; i++) {
+          const a = wheel.angle + i * Math.PI / 3;
+          gfx.lineBetween(cx, cy, cx + Math.cos(a) * 10, cy + Math.sin(a) * 10);
+        }
+      };
+      drawWheel(bike.wheelBack);
+      drawWheel(bike.wheelFront);
+
+      // Châssis
+      gfx.fillStyle(color);
+      gfx.lineStyle(2, 0x111111);
+      const frame = [local(-40, 6), local(40, 6), local(38, -5), local(-38, -5)];
+      gfx.beginPath(); gfx.moveTo(frame[0].x, frame[0].y);
+      frame.forEach(p => gfx.lineTo(p.x, p.y));
+      gfx.closePath(); gfx.fillPath(); gfx.strokePath();
+
+      // Réservoir
+      const tankColor = Phaser.Display.Color.ValueToColor(color).clone().darken(20).color;
+      gfx.fillStyle(tankColor);
+      const tank = [local(-16, -5), local(20, -5), local(12, -22), local(-12, -22)];
+      gfx.beginPath(); gfx.moveTo(tank[0].x, tank[0].y);
+      tank.forEach(p => gfx.lineTo(p.x, p.y));
+      gfx.closePath(); gfx.fillPath();
+
+      // Selle
+      gfx.fillStyle(0x111111);
+      const seat = [local(-42, -5), local(-14, -5), local(-12, -16), local(-40, -16)];
+      gfx.beginPath(); gfx.moveTo(seat[0].x, seat[0].y);
+      seat.forEach(p => gfx.lineTo(p.x, p.y));
+      gfx.closePath(); gfx.fillPath();
+
+      // Phare
+      const head = local(40, -6);
+      gfx.fillStyle(0xffeebb); gfx.fillCircle(head.x, head.y, 6);
+
+      // Pilote (corps simple)
+      const torso = local(-2, -28);
+      const head2 = local(2, -42);
+      gfx.fillStyle(0x2266aa);
+      gfx.fillCircle(torso.x, torso.y, 9);
+      gfx.fillStyle(0xffccaa);
+      gfx.fillCircle(head2.x, head2.y, 7);
+      gfx.fillStyle(0x222222);
+      gfx.fillCircle(head2.x, head2.y - 1, 8);
+    }
+
+    makeButton(x, y, text, onClick, isPause) {
+      const btn = this.add.text(x, y, text, {
+        font: 'bold 14px sans-serif',
+        color: '#fff',
+        backgroundColor: '#ff5533',
+        padding: { x: 14, y: 6 }
+      }).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#ff7755' }));
+      btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#ff5533' }));
+      btn.on('pointerdown', onClick);
+      if (isPause) this.pauseBtn = btn;
+      return btn;
+    }
+  }
+
+  // ===========================================================
   // CONFIG PHASER
   // ===========================================================
   const config = {
@@ -5445,7 +6038,7 @@
         debug: false
       }
     },
-    scene: [MenuScene, HelpScene, GameSetupScene, MultiScene, ServerRoomScene, LeaderboardScene, GameScene, GameOverScene, ChallengeEndScene]
+    scene: [MenuScene, HelpScene, GameSetupScene, MultiScene, ServerRoomScene, LeaderboardScene, GameScene, GameOverScene, ChallengeEndScene, ReplayScene]
   };
 
   const game = new Phaser.Game(config);
