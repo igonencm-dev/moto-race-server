@@ -1088,42 +1088,42 @@
       name: 'Le Gouffre',
       terrain: [
         // === Outdoor : long flat pour boost speed ===
-        { x: -200, y: 300 }, { x: 1400, y: 300 },
-        // === Rampe ascendante (lance la moto en l'air) ===
-        { x: 1500, y: 270 },
-        { x: 1620, y: 210 },
-        { x: 1740, y: 140 },
-        { x: 1850, y: 80 },
-        { x: 1900, y: 50 },
-        // === GAP géant — saut stellaire ===
-        { x: 1900, y: 50, gap: true },
-        // === Atterrissage : DIRECTEMENT en grotte (sol bas) ===
-        { x: 2700, y: 600 },
-        { x: 2900, y: 620 },
-        { x: 3100, y: 640 },
-        // Bosse cave (skill)
-        { x: 3300, y: 615 },
-        { x: 3500, y: 640 },
+        { x: -200, y: 350 }, { x: 1500, y: 350 },
+        // === Rampe gentle (climb sans perdre trop de vitesse) ===
+        { x: 1620, y: 320 },
+        { x: 1740, y: 270 },
+        { x: 1860, y: 210 },
+        { x: 1960, y: 160 },
+        { x: 2030, y: 130 },
+        // === Plat horizontal au sommet (lance la moto purement horizontale) ===
+        { x: 2150, y: 130 },
+        // === GAP — saut spectaculaire (Δx=600, Δy=440, faisable à pleine vitesse) ===
+        { x: 2150, y: 130, gap: true },
+        // === Atterrissage en grotte ===
+        { x: 2750, y: 570 },
+        { x: 2950, y: 600 },
+        { x: 3150, y: 620 },
+        // Bosse cave (skill : pas de wheelie sous le plafond)
+        { x: 3350, y: 595 },
+        { x: 3550, y: 620 },
         // Final
-        { x: 3800, y: 660 },
-        { x: 4200, y: 660 }
+        { x: 3800, y: 640 },
+        { x: 4200, y: 640 }
       ],
       obstacles: [],
       ceilings: [
-        // Plafond commence à l'entrée de la grotte
-        { x: 2400, y: 200 },
-        { x: 2600, y: 350 },
-        { x: 2700, y: 460 },  // au-dessus du landing
-        { x: 2900, y: 490 },
-        { x: 3100, y: 510 },
-        { x: 3300, y: 480 },  // tight au-dessus bosse cave
-        { x: 3500, y: 510 },
-        { x: 3800, y: 530 },
-        { x: 4200, y: 540 },
-        { x: 4200, y: 540, gap: true }
+        // Plafond commence APRÈS le landing (pas dans la zone de descente)
+        { x: 2900, y: 440 },
+        { x: 3100, y: 480 },
+        { x: 3300, y: 450 },  // tight au-dessus bosse cave (DANGER wheelie)
+        { x: 3500, y: 480 },
+        { x: 3700, y: 500 },
+        { x: 4000, y: 510 },
+        { x: 4200, y: 510 },
+        { x: 4200, y: 510, gap: true }
       ],
       finishX: 4200,
-      bikeStartY: 240
+      bikeStartY: 290
     },
   ];
 
