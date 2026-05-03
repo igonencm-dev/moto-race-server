@@ -628,6 +628,69 @@
       obstacles: [],
       finishX: 7900,
       bikeStartY: 140
+    },
+    {
+      name: 'Niveau 18 — Le Trou',
+      terrain: [
+        { x: -200, y: 400 }, { x: 600, y: 400 },
+        // mini bosse de chauffe
+        { x: 750, y: 380 }, { x: 900, y: 400 },
+        // long plat pour prendre de la vitesse
+        { x: 1700, y: 400 },
+        // rampe smooth pour bien lancer
+        { x: 1850, y: 380 },
+        { x: 2000, y: 350 },
+        { x: 2150, y: 310 },
+        { x: 2300, y: 260 },
+        { x: 2450, y: 210, gap: true },
+        // === GROS TROU 1200px ===
+        // atterrissage smooth
+        { x: 3650, y: 280 },
+        { x: 3850, y: 340 },
+        { x: 4050, y: 380 },
+        { x: 4250, y: 400 },
+        // plat
+        { x: 4900, y: 400 },
+        // 2ème trou plus court
+        { x: 5050, y: 380 },
+        { x: 5200, y: 340 },
+        { x: 5350, y: 300, gap: true },
+        // === TROU 600px ===
+        { x: 5950, y: 360 },
+        { x: 6100, y: 400 },
+        { x: 6700, y: 400 }
+      ],
+      obstacles: [],
+      finishX: 6700,
+      bikeStartY: 340
+    },
+    {
+      name: 'Niveau 19 — Obstacles',
+      terrain: [
+        { x: -200, y: 400 }, { x: 1200, y: 400 },
+        // mini bosse pour échauffer
+        { x: 1350, y: 380 }, { x: 1500, y: 400 },
+        // plat
+        { x: 2400, y: 400 },
+        // ondulation
+        { x: 2600, y: 380 },
+        { x: 2800, y: 360 },
+        { x: 3000, y: 380 },
+        { x: 3200, y: 400 },
+        // plat
+        { x: 3700, y: 400 },
+        // mini bosse
+        { x: 3850, y: 380 }, { x: 4000, y: 400 },
+        // arrivée
+        { x: 5000, y: 400 }
+      ],
+      obstacles: [
+        { x: 800, y: 380, w: 38, h: 38 },    // 1er obstacle
+        { x: 1900, y: 380, w: 38, h: 38 },   // 2ème
+        { x: 4400, y: 380, w: 38, h: 38 }    // 3ème final
+      ],
+      finishX: 5000,
+      bikeStartY: 340
     }
   ];
 
@@ -2581,16 +2644,16 @@
     buildTerrain(points) {
       const level = LEVELS[this.levelIndex];
       const terrainFriction = (level && level.friction !== undefined) ? level.friction : 0.9;
-      // Bodies physiques (rectangles inclinés entre points)
+      // Bodies physiques (rectangles inclinés entre points). Skip si p1.gap=true → vrai trou
       for (let i = 0; i < points.length - 1; i++) {
         const p1 = points[i];
+        if (p1.gap) continue;
         const p2 = points[i + 1];
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
         const len = Math.sqrt(dx * dx + dy * dy);
         const angle = Math.atan2(dy, dx);
         const cx = (p1.x + p2.x) / 2;
-        // décale le rectangle vers le bas pour que sa face supérieure passe par les points
         const cy = (p1.y + p2.y) / 2 + 50 * Math.cos(angle);
         const cxOffset = -50 * Math.sin(angle);
         this.matter.add.rectangle(cx + cxOffset, cy, len, 100, {
@@ -2602,20 +2665,36 @@
         });
       }
 
-      // Visuel : remplissage marron sous le terrain
+      // Découpe en chunks (séparés par les points marqués gap)
+      const chunks = [];
+      let chunk = [];
+      for (let i = 0; i < points.length; i++) {
+        chunk.push(points[i]);
+        if (points[i].gap && i < points.length - 1) {
+          chunks.push(chunk);
+          chunk = [];
+        }
+      }
+      if (chunk.length) chunks.push(chunk);
+
+      // Visuel : remplissage marron par chunk (les trous restent vides)
       const g = this.terrainGfx;
       g.fillStyle(0x4a3a2a);
-      g.beginPath();
-      g.moveTo(points[0].x, 1500);
-      points.forEach(p => g.lineTo(p.x, p.y));
-      g.lineTo(points[points.length - 1].x, 1500);
-      g.closePath();
-      g.fillPath();
+      for (const c of chunks) {
+        if (c.length < 2) continue;
+        g.beginPath();
+        g.moveTo(c[0].x, 1500);
+        c.forEach(p => g.lineTo(p.x, p.y));
+        g.lineTo(c[c.length - 1].x, 1500);
+        g.closePath();
+        g.fillPath();
+      }
 
-      // Bande d'herbe en surface
+      // Bande d'herbe en surface (skip gap segments)
       g.fillStyle(0x55aa44);
       for (let i = 0; i < points.length - 1; i++) {
         const p1 = points[i];
+        if (p1.gap) continue;
         const p2 = points[i + 1];
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
@@ -2635,10 +2714,11 @@
         g.fillPath();
       }
 
-      // Petits brins d'herbe pour le détail
+      // Petits brins d'herbe pour le détail (skip gap segments)
       g.lineStyle(2, 0x77cc55);
       for (let i = 0; i < points.length - 1; i++) {
         const p1 = points[i];
+        if (p1.gap) continue;
         const p2 = points[i + 1];
         const segments = Math.floor(Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2) / 18);
         for (let s = 0; s < segments; s++) {
