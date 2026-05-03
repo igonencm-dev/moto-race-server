@@ -741,31 +741,27 @@
         { x: -200, y: 400 }, { x: 1500, y: 400 },
         // mini bosse de chauffe
         { x: 1650, y: 380 }, { x: 1800, y: 400 },
-        // suite plat (pour vitesse max + boost ESPACE)
+        // long plat (vitesse + boost ESPACE)
         { x: 2400, y: 400 },
-        // === RAMPE GIGANTESQUE ===
+        // === RAMPE TREMPLIN (45° à la fin) ===
         { x: 2500, y: 390 },
         { x: 2600, y: 370 },
         { x: 2700, y: 330 },
         { x: 2800, y: 280 },
         { x: 2900, y: 220 },
-        { x: 3000, y: 150 },
-        { x: 3080, y: 90 },
-        { x: 3130, y: 30 },
-        { x: 3160, y: -30, gap: true },
-        // === GAP ÉNORME (vol pendant 2 secondes) ===
-        // pente descendante d'atterrissage (large)
-        { x: 4700, y: 200 },
-        { x: 5000, y: 280 },
-        { x: 5300, y: 350 },
-        { x: 5600, y: 400 },
-        { x: 5900, y: 420 },
-        // arrivée
-        { x: 6500, y: 420 },
-        { x: 7000, y: 420 }
+        { x: 2980, y: 170 },
+        { x: 3030, y: 130, gap: true },
+        // === GAP 850px (jouable avec speed + boost) ===
+        { x: 3880, y: 250 },
+        { x: 4080, y: 320 },
+        { x: 4280, y: 380 },
+        { x: 4480, y: 410 },
+        // plat puis arrivée
+        { x: 5100, y: 410 },
+        { x: 5600, y: 410 }
       ],
       obstacles: [],
-      finishX: 7000,
+      finishX: 5600,
       bikeStartY: 340
     },
     {
@@ -792,6 +788,43 @@
       obstacles: [],
       finishX: 4700,
       bikeStartY: 340
+    },
+    {
+      name: 'Niveau 23 — Sous Terrain',
+      terrain: [
+        // surface en haut (départ)
+        { x: -200, y: 200 }, { x: 1500, y: 200 },
+        // === plongée vers les profondeurs ===
+        { x: 1650, y: 230 },
+        { x: 1800, y: 280 },
+        { x: 1950, y: 350 },
+        { x: 2100, y: 440 },
+        { x: 2250, y: 540 },
+        { x: 2400, y: 620 },
+        { x: 2550, y: 680 },
+        { x: 2700, y: 700 },
+        // === tunnel souterrain (plat avec bosses) ===
+        { x: 3000, y: 700 },
+        { x: 3150, y: 680 }, { x: 3300, y: 700 },
+        { x: 3450, y: 700 },
+        { x: 3600, y: 670 }, { x: 3750, y: 700 },
+        { x: 3900, y: 700 },
+        // === remontée vers la sortie ===
+        { x: 4100, y: 660 },
+        { x: 4300, y: 600 },
+        { x: 4500, y: 530 },
+        { x: 4700, y: 460 },
+        { x: 4900, y: 400 },
+        // sortie en surface (en hauteur)
+        { x: 5100, y: 380 },
+        // bosse finale
+        { x: 5300, y: 360 }, { x: 5500, y: 380 },
+        // arrivée
+        { x: 6100, y: 380 }
+      ],
+      obstacles: [],
+      finishX: 6100,
+      bikeStartY: 140
     }
   ];
 
