@@ -1283,6 +1283,82 @@
       finishX: 4500,
       bikeStartY: 290
     },
+    // ============== MAP MULTI-CHEMINS ==============
+    // Comme Le Gouffre, mais après le saut le joueur doit choisir entre
+    // 3 tunnels stackés. Chacun a son propre drapeau d'arrivée. La hauteur
+    // du saut détermine sur quel tunnel on atterrit.
+    {
+      tier: 2,
+      name: 'La Trinité',
+      terrain: [
+        // === Long plat outdoor pour gagner de la vitesse ===
+        { x: -200, y: 400 }, { x: 1500, y: 400 },
+        // === Rampe + plat horizontal au sommet (le bike est lancé tout droit) ===
+        { x: 1620, y: 370 },
+        { x: 1740, y: 320 },
+        { x: 1860, y: 260 },
+        { x: 1960, y: 200 },
+        { x: 2030, y: 170 },
+        { x: 2150, y: 170 },
+        // === GAP — la zone de choix du tunnel ===
+        { x: 2150, y: 170, gap: true },
+
+        // === TUNNEL DU HAUT (long jump) — fillToY=370 limite le sol au-dessus du milieu ===
+        { x: 2900, y: 240, fillToY: 370 },
+        { x: 3100, y: 240 },
+        { x: 3300, y: 240 },
+        { x: 3500, y: 245 },
+        { x: 3700, y: 240 },
+        { x: 3900, y: 250 },
+        { x: 4100, y: 245 },
+        { x: 4350, y: 245 },
+        { x: 4350, y: 245, gap: true },
+
+        // === TUNNEL DU MILIEU (jump moyen) — fillToY=550 ===
+        { x: 2750, y: 460, fillToY: 550 },
+        { x: 2950, y: 460 },
+        { x: 3150, y: 470 },
+        { x: 3350, y: 460 },
+        { x: 3550, y: 470 },
+        { x: 3750, y: 460 },
+        { x: 3950, y: 460 },
+        { x: 4350, y: 460 },
+        { x: 4350, y: 460, gap: true },
+
+        // === TUNNEL DU BAS (short jump, le plus facile) — fillToY default 1500 ===
+        { x: 2550, y: 670 },
+        { x: 2750, y: 680 },
+        { x: 2950, y: 690 },
+        { x: 3150, y: 685 },
+        { x: 3350, y: 690 },
+        { x: 3550, y: 690 },
+        { x: 3750, y: 685 },
+        { x: 3950, y: 690 },
+        { x: 4350, y: 690 }
+      ],
+      obstacles: [],
+      // Plafonds (rectangles) — empêchent de sauter d'un tunnel à un autre
+      // pendant la course (sinon le joueur cheaterait en sautant du bas vers le milieu).
+      // Format rectangle : x = centre, y = centre, w/h = dimensions.
+      ceilings: [
+        // Plafond du tunnel du haut (au-dessus de y=240, clearance ~150 pour wheelie ok)
+        { x: 3650, y: 95, w: 1500, h: 90 },
+        // Plafond du tunnel du milieu (au-dessus de y=460, clearance ~140)
+        // Couvre toute la zone entre tunnel haut et milieu
+        { x: 3650, y: 320, w: 1500, h: 50 },
+        // Plafond du tunnel du bas (au-dessus de y=690, clearance ~140)
+        // Couvre la zone entre tunnel milieu et bas
+        { x: 3650, y: 545, w: 1900, h: 50 }
+      ],
+      // 3 drapeaux d'arrivée, un par tunnel
+      finishLines: [
+        { x: 4300, y: 245 },  // tunnel du haut
+        { x: 4300, y: 460 },  // tunnel du milieu
+        { x: 4300, y: 690 }   // tunnel du bas
+      ],
+      finishX: 4300,           // fallback (pas utilisé si finishLines présent)
+      bikeStartY: 340
+    },
   ];
 
   // ===========================================================
@@ -4554,11 +4630,15 @@
           if (p.x < minX) minX = p.x;
           if (p.x > maxX) maxX = p.x;
         }
+        // fillToY (sur le 1er point du chunk) limite la hauteur de remplissage du sol.
+        // Utile pour les niveaux avec des tunnels empilés où on ne veut pas que le
+        // chunk du dessus remplisse tout l'espace en dessous.
+        const fillFloor = (c[0].fillToY !== undefined) ? c[0].fillToY : 1500;
         g.beginPath();
-        g.moveTo(minX, 1500);
+        g.moveTo(minX, fillFloor);
         g.lineTo(c[0].x, c[0].y);
         c.forEach(p => g.lineTo(p.x, p.y));
-        g.lineTo(maxX, 1500);
+        g.lineTo(maxX, fillFloor);
         g.closePath();
         g.fillPath();
       }
@@ -4935,35 +5015,39 @@
     }
 
     addFinishLine(level) {
+      // Format historique : un seul drapeau (level.finishX + dernier point du terrain pour Y).
+      // Format multi : level.finishLines = [{x, y}, ...] — chaque entry crée un drapeau séparé.
       const lastP = level.terrain[level.terrain.length - 1];
-      const groundY = lastP.y;
-      // sensor invisible, plein écran vertical
-      this.matter.add.rectangle(this.finishX, groundY - 250, 12, 500, {
+      const lines = (level.finishLines && level.finishLines.length)
+        ? level.finishLines
+        : [{ x: this.finishX, y: lastP.y }];
+      lines.forEach(line => this.drawOneFinishLine(line.x, line.y));
+    }
+
+    drawOneFinishLine(fx, groundY) {
+      // Sensor invisible (collision = victoire)
+      this.matter.add.rectangle(fx, groundY - 250, 12, 500, {
         isStatic: true,
         isSensor: true,
         label: 'finish'
       });
-
-      // visuel : poteau + drapeau à damier
+      // Visuel : poteau + drapeau à damier + texte
       const g = this.add.graphics();
-      // poteau
       g.fillStyle(0xeeeeee);
-      g.fillRect(this.finishX - 3, groundY - 500, 6, 500);
+      g.fillRect(fx - 3, groundY - 500, 6, 500);
       g.lineStyle(2, 0x222222);
-      g.strokeRect(this.finishX - 3, groundY - 500, 6, 500);
-      // drapeau damier
+      g.strokeRect(fx - 3, groundY - 500, 6, 500);
       const flagW = 60, flagH = 50;
       const flagY = groundY - 490;
       const cellW = flagW / 6, cellH = flagH / 5;
       for (let r = 0; r < 5; r++) {
         for (let c = 0; c < 6; c++) {
           g.fillStyle((r + c) % 2 === 0 ? 0xffffff : 0x111111);
-          g.fillRect(this.finishX + c * cellW, flagY + r * cellH, cellW, cellH);
+          g.fillRect(fx + c * cellW, flagY + r * cellH, cellW, cellH);
         }
       }
-      // Texte FINISH
-      this.add.text(this.finishX, groundY - 540, 'ARRIVÉE', {
-        font: 'bold 20px sans-serif',
+      this.add.text(fx, groundY - 540, 'ARRIVÉE', {
+        font: 'bold 18px sans-serif',
         color: '#ffdd44',
         stroke: '#000', strokeThickness: 4
       }).setOrigin(0.5);
@@ -5340,7 +5424,10 @@
       // === Rendus ===
       this.drawBike(this.bike, this.bikeGfx, 0xff5533);
       if (this.ghostState && this.ghostGfx) this.drawGhost();
-      if (this.ghosts && this.ghostsGfx) this.drawAllGhosts();
+      // Pas de fantômes affichés en salon public ('server') — moins distrayant
+      // pendant la course solo classée. Les fantômes restent visibles en
+      // salon privé ('private-server') car les joueurs sont des potes invités.
+      if (this.ghosts && this.ghostsGfx && this.mode !== 'server') this.drawAllGhosts();
 
       // Animer coins (rotation visuelle)
       if (this.coins && this.coins.length) this.drawCoins(time);
