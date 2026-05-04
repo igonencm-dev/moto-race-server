@@ -2887,23 +2887,24 @@
       }).setOrigin(0.5);
 
       const pseudo = Player.getName() || 'anonyme';
-      ServerConn.connect(pseudo, 'main')
-        .catch(() => null) // ignore l'auto-join sur main
-        .finally(() => {
-          // En réalité on ouvre une connexion brute pour envoyer joinRoom au lieu de join
-          // Plus simple : on (re)connecte directement avec un message custom
-          this.openCustomConnection(() => {
-            ServerConn.send({ type: 'joinRoom', code, pseudo });
-          });
-        });
-
+      // Listeners AVANT la connexion pour ne rien rater
       this.attachServerListeners();
+      this.openCustomConnection(() => {
+        ServerConn.send({ type: 'joinRoom', code, pseudo });
+      });
     }
 
-    // Ouvre/réouvre une connexion mais sans envoyer 'join' automatique
+    // Ouvre/réouvre une connexion mais sans envoyer 'join' automatique.
+    // IMPORTANT : on ne wipe pas les listeners (contrairement à disconnect())
+    // sinon la réponse roomJoined/roomCreated serait perdue.
     openCustomConnection(onOpen) {
-      // Si déjà connecté, on déconnecte d'abord pour éviter le auto-join
-      if (ServerConn.connected) ServerConn.disconnect();
+      // Ferme l'ancienne ws si présente (sans wiper les listeners)
+      if (ServerConn.ws) {
+        try { ServerConn.ws.close(); } catch (e) {}
+        ServerConn.ws = null;
+      }
+      ServerConn.connected = false;
+      ServerConn.myId = null;
       try {
         ServerConn.ws = new WebSocket(ServerConn.getUrl());
       } catch (e) {
@@ -3718,10 +3719,13 @@
         color: '#ffffff'
       }).setOrigin(1, 0).setScrollFactor(0);
 
-      const modeLabel = this.mode === 'solo'
-        ? 'SOLO'
-        : (this.mode === 'multi-host' ? 'MULTI · HOST' : 'MULTI · GUEST');
-      const modeCol = this.mode === 'solo' ? '#aaffaa' : '#66ccff';
+      let modeLabel, modeCol;
+      if (this.mode === 'solo') { modeLabel = 'SOLO'; modeCol = '#aaffaa'; }
+      else if (this.mode === 'multi-host') { modeLabel = 'MULTI · HOST'; modeCol = '#66ccff'; }
+      else if (this.mode === 'multi-join') { modeLabel = 'MULTI · GUEST'; modeCol = '#66ccff'; }
+      else if (this.mode === 'server') { modeLabel = '🌍  SALON PUBLIC'; modeCol = '#ffaa66'; }
+      else if (this.mode === 'private-server') { modeLabel = '🤝  SALON PRIVÉ'; modeCol = '#ffaa66'; }
+      else { modeLabel = this.mode.toUpperCase(); modeCol = '#aaa'; }
       this.modeText = this.add.text(rpX + rpW - 14, rpY + 36, modeLabel, {
         font: 'bold 11px sans-serif',
         color: modeCol
