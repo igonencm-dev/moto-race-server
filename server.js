@@ -189,6 +189,10 @@ function endCurrentMap(room) {
   log(`🏁 Salon "${room.id}" : fin map ${room.currentMapIdx}, ${scores.length} score(s)`);
 }
 
+// Grace period serveur : on attend 500ms après l'expiration du timer avant de
+// fermer la map, pour laisser le temps aux derniers messages 'finished' d'arriver.
+const END_GRACE_MS = 500;
+
 function startRoomLoop(room) {
   room.tickInterval = setInterval(() => {
     const now = Date.now();
@@ -197,7 +201,7 @@ function startRoomLoop(room) {
       if (room.lobbyState === 'racing') {
         const elapsed = now - room.mapStartedAt;
         const durationMs = room.durationPerMap * 1000;
-        if (elapsed >= durationMs) {
+        if (elapsed >= durationMs + END_GRACE_MS) {
           endPrivateMap(room);
         }
       } else if (room.lobbyState === 'transition') {
@@ -601,16 +605,19 @@ wss.on('connection', (ws, req) => {
       broadcast(room, { type: 'playerLeft', id: player.id });
       log(`➖ ${player.pseudo} quitte "${room.id}" — ${room.players.size} joueur(s)`);
 
-      // Salon privé : si le host quitte avant le démarrage, on transfère ou détruit
-      if (room.kind === 'private' && player.id === room.hostId) {
-        if (room.lobbyState === 'waiting' && room.players.size > 0) {
-          // Transfère le host au plus ancien joueur restant
-          const newHost = room.players.values().next().value;
-          if (newHost) {
-            room.hostId = newHost.id;
-            broadcast(room, { type: 'hostChanged', newHostId: newHost.id, newHostPseudo: newHost.pseudo });
-            log(`👑 Salon "${room.id}" : host transféré à ${newHost.pseudo}`);
-          }
+      // Salon privé : si le host quitte (peu importe la phase), on transfère
+      // au plus ancien joueur restant. Sinon le BO continuerait sans contrôle
+      // possible (ex: bouton "Lancer le BO" / config maps n'aurait plus de host).
+      if (room.kind === 'private' && player.id === room.hostId && room.players.size > 0) {
+        const newHost = room.players.values().next().value;
+        if (newHost) {
+          room.hostId = newHost.id;
+          broadcast(room, {
+            type: 'hostChanged',
+            newHostId: newHost.id,
+            newHostPseudo: newHost.pseudo
+          });
+          log(`👑 Salon "${room.id}" : host transféré à ${newHost.pseudo} (phase=${room.lobbyState})`);
         }
       }
 

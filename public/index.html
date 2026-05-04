@@ -3485,10 +3485,15 @@
         this.renderLobby();
       });
       reg('lobbyPlayerJoined', (m) => {
-        if (this.state !== 'lobby') return;
-        this.lobbyPlayers.push({ id: m.id, pseudo: m.pseudo, isHost: m.isHost });
-        this.refreshLobbyPlayers();
-        this.refreshLobbyAction();
+        // Toujours mettre à jour la liste, même si le user est en editConfig
+        // (sinon il reviendrait dans le lobby avec une liste périmée)
+        if (!this.lobbyPlayers.some(p => p.id === m.id)) {
+          this.lobbyPlayers.push({ id: m.id, pseudo: m.pseudo, isHost: m.isHost });
+        }
+        if (this.state === 'lobby') {
+          this.refreshLobbyPlayers();
+          this.refreshLobbyAction();
+        }
       });
       reg('playerLeft', (m) => {
         this.lobbyPlayers = this.lobbyPlayers.filter(p => p.id !== m.id);
@@ -3503,6 +3508,14 @@
         if (this.state === 'lobby') {
           this.refreshLobbyPlayers();
           this.refreshLobbyAction();
+        }
+      });
+      reg('pseudo', (m) => {
+        // Un joueur a changé son pseudo : on met à jour la liste lobby pour tous
+        const p = this.lobbyPlayers.find(p => p.id === m.id);
+        if (p) {
+          p.pseudo = m.pseudo;
+          if (this.state === 'lobby') this.refreshLobbyPlayers();
         }
       });
       reg('configUpdated', (m) => {
