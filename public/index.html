@@ -1136,14 +1136,21 @@
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       } catch (e) { this.ctx = null; return; }
       this.muted = false;
+      // Volume musique persisté (entre 0 et 0.15)
+      const stored = parseFloat(localStorage.getItem('musicVol'));
+      this.savedMusicVol = (isNaN(stored) || stored < 0 || stored > 0.20) ? 0.07 : stored;
       this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = 0.07;
+      this.musicGain.gain.value = this.savedMusicVol;
       this.musicGain.connect(this.ctx.destination);
       this.sfxGain = this.ctx.createGain();
       this.sfxGain.gain.value = 0.4;
       this.sfxGain.connect(this.ctx.destination);
       this.engineNode = null;
       this.musicPlaying = false;
+    }
+
+    getMusicVolume() {
+      return this.savedMusicVol !== undefined ? this.savedMusicVol : 0.07;
     }
 
     resume() {
@@ -1404,13 +1411,19 @@
     }
 
     setMusicVolume(v) {
-      if (this.musicGain) this.musicGain.gain.value = v;
+      const clamped = Math.max(0, Math.min(0.20, v));
+      this.savedMusicVol = clamped;
+      try { localStorage.setItem('musicVol', clamped.toString()); } catch (e) {}
+      if (this.musicGain && !this.muted) this.musicGain.gain.value = clamped;
+      // Si à 0, considère comme muté pour cohérence avec l'icône 🔊/🔇
+      if (clamped === 0 && !this.muted) this.muted = true;
+      else if (clamped > 0 && this.muted) this.muted = false;
     }
 
     toggleMute() {
       if (!this.ctx) return;
       this.muted = !this.muted;
-      this.musicGain.gain.value = this.muted ? 0 : 0.07;
+      this.musicGain.gain.value = this.muted ? 0 : (this.savedMusicVol || 0.07);
       this.sfxGain.gain.value = this.muted ? 0 : 0.4;
       return this.muted;
     }
@@ -3742,6 +3755,76 @@
       this.leaderboardBtn.on('pointerout', () => this.leaderboardBtn.setStyle({ backgroundColor: '#222a3a' }));
       this.leaderboardBtn.on('pointerdown', () => this.toggleLeaderboardOverlay());
       this.input.keyboard.on('keydown-L', () => this.toggleLeaderboardOverlay());
+
+      // ─── Slider VOLUME MUSIQUE (sous le bouton 🏆) ───
+      const volPanelY = rpY + rpH + 50;
+      const volPanelW = rpW;
+      const volPanelH = 44;
+      const volPanel = this.add.graphics().setScrollFactor(0);
+      volPanel.fillStyle(hudCol, hudAlpha);
+      volPanel.fillRoundedRect(rpX, volPanelY, volPanelW, volPanelH, 10);
+      volPanel.lineStyle(1, 0xffffff, 0.12);
+      volPanel.strokeRoundedRect(rpX, volPanelY, volPanelW, volPanelH, 10);
+
+      // Icône cliquable pour mute/unmute (toggle direct sur 0)
+      this.volIconText = this.add.text(rpX + 12, volPanelY + 13, '🔊', {
+        font: '16px sans-serif'
+      }).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      this.volIconText.on('pointerdown', () => {
+        if (!window.audio) return;
+        const cur = window.audio.getMusicVolume();
+        if (cur > 0) {
+          this._volBeforeMute = cur;
+          window.audio.setMusicVolume(0);
+        } else {
+          window.audio.setMusicVolume(this._volBeforeMute || 0.07);
+        }
+        this.refreshVolumeUI();
+      });
+
+      this.volPercentText = this.add.text(rpX + 38, volPanelY + 14, '50%', {
+        font: 'bold 11px monospace', color: '#fff'
+      }).setScrollFactor(0);
+
+      // Bar (slider cliquable)
+      const VOL_MAX = 0.15;
+      const barW = 110, barH = 6;
+      const barX = rpX + volPanelW - barW - 14;
+      const barY = volPanelY + 19;
+
+      const barBg = this.add.graphics().setScrollFactor(0);
+      barBg.fillStyle(0x1a2030);
+      barBg.fillRoundedRect(barX, barY, barW, barH, 3);
+      barBg.lineStyle(1, 0xffffff, 0.15);
+      barBg.strokeRoundedRect(barX, barY, barW, barH, 3);
+
+      this.volFillGfx = this.add.graphics().setScrollFactor(0);
+
+      // Hit area (plus large pour faciliter le clic)
+      const volHit = this.add.rectangle(barX - 4, barY - 10, barW + 8, barH + 22, 0xffffff, 0.001)
+        .setOrigin(0).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      const setVolFromX = (px) => {
+        if (!window.audio) return;
+        const ratio = Math.max(0, Math.min(1, (px - barX) / barW));
+        window.audio.setMusicVolume(ratio * VOL_MAX);
+        this.refreshVolumeUI();
+      };
+      volHit.on('pointerdown', (p) => setVolFromX(p.x));
+      volHit.on('pointermove', (p) => { if (p.isDown) setVolFromX(p.x); });
+
+      // Méthode de redraw
+      this.refreshVolumeUI = () => {
+        const v = window.audio ? window.audio.getMusicVolume() : 0;
+        const ratio = Math.max(0, Math.min(1, v / VOL_MAX));
+        this.volFillGfx.clear();
+        if (ratio > 0) {
+          this.volFillGfx.fillStyle(0xffdd44);
+          this.volFillGfx.fillRoundedRect(barX, barY, Math.max(2, barW * ratio), barH, 3);
+        }
+        if (this.volPercentText) this.volPercentText.setText(Math.round(ratio * 100) + '%');
+        if (this.volIconText) this.volIconText.setText(v > 0 ? '🔊' : '🔇');
+      };
+      this.refreshVolumeUI();
 
       // ─── Help discret en bas ───
       this.helpText = this.add.text(scrW / 2, scrH - 18,
