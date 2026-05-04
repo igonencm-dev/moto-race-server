@@ -5244,32 +5244,9 @@
         }
       }
 
-      // Bouton replay du gagnant (attend ~500ms que le replay du gagnant arrive du serveur)
-      this.time.delayedCall(800, () => {
-        const winner = (msg.scores || [])[0];
-        if (!winner) return;
-        // 2 cas : moi je suis le gagnant (j'ai mon bestRunReplay) OU c'est un autre joueur (j'ai reçu son replay)
-        let winnerReplay = null;
-        if (winner.id === myId && this.bestRunReplay) {
-          winnerReplay = this.bestRunReplay;
-        } else if (this._replays && this._replays.has(winner.id)) {
-          winnerReplay = this._replays.get(winner.id).replay;
-        }
-        if (winnerReplay) {
-          const btn = this.add.text(w / 2 - 170, h / 2 + 70, '▶  Replay vainqueur', {
-            font: 'bold 14px sans-serif', color: '#fff',
-            backgroundColor: '#44aa44', padding: { x: 16, y: 8 }
-          }).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
-          btn.on('pointerdown', () => {
-            this.scene.start('Replay', {
-              replay: winnerReplay,
-              level: msg.mapIdx,
-              returnTo: 'Menu'
-            });
-          });
-          this.serverEndOverlay.add(btn);
-        }
-      });
+      // Note : pas de bouton replay pendant la transition d'un BO en salon privé
+      // (sortir de la GameScene mid-BO casserait la sync avec le serveur).
+      // Les replays sont dispos à la fin du BO via PrivateBOEndScene.
 
       // Décompte avant la prochaine map (ou fin de BO)
       const countdownText = this.add.text(w / 2, h - 60, '', {
@@ -6691,10 +6668,24 @@
             backgroundColor: '#44aa44', padding: { x: 10, y: 4 }
           }).setOrigin(0.5).setInteractive({ useHandCursor: true });
           btn.on('pointerdown', () => {
+            // Au close du replay, on revient sur PrivateBOEnd avec toutes les données
+            // (pour pouvoir regarder un autre replay sans perdre le récap ni le salon)
             this.scene.start('Replay', {
               replay: b.winnerReplay,
               level: b.mapIdx,
-              returnTo: 'Menu'
+              returnContext: {
+                scene: 'PrivateBOEnd',
+                data: {
+                  bestPerMap: this.bestPerMap,
+                  myId: this.myId,
+                  myPseudo: this.myPseudo,
+                  players: this.players,
+                  roomCode: this.roomCode,
+                  hostId: this.hostId,
+                  mapSequence: this.mapSequence,
+                  durationPerMap: this.durationPerMap
+                }
+              }
             });
           });
         }
@@ -6747,6 +6738,9 @@
       this.replay = data.replay;                    // { time, frames, level, pseudo }
       this.levelIndex = data.level !== undefined ? data.level : (this.replay && this.replay.level) || 0;
       this.returnTo = data.returnTo || 'Menu';
+      // returnContext : { scene: 'PrivateBOEnd', data: {...} } — prioritaire sur returnTo
+      // Permet de revenir à la scène d'origine avec son state (ex : récap du BO).
+      this.returnContext = data.returnContext || null;
       this.peer = data.peer || null;
     }
 
@@ -6835,7 +6829,13 @@
         }
       }, true);
       this.makeButton(w / 2 + 130, h - 40, '✕  Fermer', () => {
-        this.scene.start(this.returnTo);
+        // Si on a un returnContext, on revient à la scène d'origine avec ses données
+        // (utile pour rester dans le récap d'un BO ou dans un salon privé)
+        if (this.returnContext) {
+          this.scene.start(this.returnContext.scene, this.returnContext.data || {});
+        } else {
+          this.scene.start(this.returnTo);
+        }
       });
     }
 
