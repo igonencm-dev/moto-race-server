@@ -2766,6 +2766,11 @@
       // Mode "retour au lobby" : on saute l'entry et on va direct au lobby
       // (la WebSocket ServerConn est encore connectée depuis le BO précédent)
       if (this.initData.returnToLobby) {
+        // Defensive : kill toute scène parasite qui pourrait rester ouverte
+        // (ChallengeEnd / GameOver / privateMapEndOverlay sur Game)
+        ['Game', 'ChallengeEnd', 'GameOver', 'PrivateBOEnd'].forEach(sk => {
+          try { this.scene.stop(sk); } catch (e) {}
+        });
         this.roomCode = this.initData.roomCode;
         this.lobbyMapSequence = this.initData.mapSequence;
         this.lobbyDuration = this.initData.durationPerMap;
@@ -3613,7 +3618,9 @@
 
       // ─── Panel CHALLENGE (haut centre) ───
       if (this.challengeMode) {
-        const cpW = 280, cpH = 158, cpX = (scrW - cpW) / 2, cpY = 14;
+        // Hauteur dynamique : 198 si on a aussi à montrer l'opponent (multi), sinon 178
+        const showOpponent = this.mode !== 'solo' && this.mode !== 'server' && this.mode !== 'private-server';
+        const cpW = 280, cpH = showOpponent ? 198 : 178, cpX = (scrW - cpW) / 2, cpY = 14;
         const centerPanel = this.add.graphics().setScrollFactor(0);
         centerPanel.fillStyle(hudCol, hudAlpha);
         centerPanel.fillRoundedRect(cpX, cpY, cpW, cpH, 12);
@@ -3647,29 +3654,50 @@
           color: '#ff8866'
         }).setOrigin(0.5, 0).setScrollFactor(0);
 
+        // ⚡ session
         const sessStr = this.sessionBestTime !== null
-          ? 'session : ' + this.sessionBestTime.toFixed(2) + 's'
-          : 'session : —';
+          ? '⚡  session : ' + this.sessionBestTime.toFixed(2) + 's'
+          : '⚡  session : —';
         this.sessionBestText = this.add.text(scrW / 2, cpY + 118, sessStr, {
           font: 'bold 12px monospace',
           color: '#aaffaa'
         }).setOrigin(0.5, 0).setScrollFactor(0);
 
-        if (this.mode === 'solo') {
-          this.globalBestText = this.add.text(scrW / 2, cpY + 138, '', {
-            font: 'bold 11px monospace',
-            color: '#ffdd44'
-          }).setOrigin(0.5, 0).setScrollFactor(0);
-          if (!this.cachedTop) {
+        // ★ perso (best all-time sur cette map, depuis localStorage)
+        const persoBest = Player.getBest(this.levelIndex);
+        const persoStr = persoBest !== null
+          ? '★  perso : ' + persoBest.toFixed(2) + 's'
+          : '★  perso : —';
+        this.persoBestText = this.add.text(scrW / 2, cpY + 138, persoStr, {
+          font: 'bold 12px monospace',
+          color: '#ffaa66'
+        }).setOrigin(0.5, 0).setScrollFactor(0);
+
+        // 🌍 record (world record, fetché depuis le leaderboard, dans tous les modes)
+        this.globalBestText = this.add.text(scrW / 2, cpY + 158, '🌍  record : ...', {
+          font: 'bold 12px monospace',
+          color: '#ffdd44'
+        }).setOrigin(0.5, 0).setScrollFactor(0);
+        if (!this.cachedTop) {
+          if (Leaderboard.isConfigured()) {
             Leaderboard.top(this.levelIndex, 1).then(top => {
               this.cachedTop = top || [];
               this.updateGlobalBestUI();
+            }).catch(() => {
+              this.cachedTop = [];
+              this.updateGlobalBestUI();
             });
           } else {
+            this.cachedTop = [];
             this.updateGlobalBestUI();
           }
         } else {
-          this.opponentBestText = this.add.text(scrW / 2, cpY + 138, '', {
+          this.updateGlobalBestUI();
+        }
+
+        // 👤 opponent (uniquement multi 1v1 P2P)
+        if (showOpponent) {
+          this.opponentBestText = this.add.text(scrW / 2, cpY + 178, '', {
             font: 'bold 11px monospace',
             color: '#66ccff'
           }).setOrigin(0.5, 0).setScrollFactor(0);
@@ -3698,6 +3726,18 @@
         font: 'bold 11px sans-serif',
         color: modeCol
       }).setOrigin(1, 0).setScrollFactor(0);
+
+      // ─── Bouton 🏆 Classement (top 10 in-game, ouvre une overlay) ───
+      this.leaderboardBtn = this.add.text(rpX + rpW - 14, rpY + rpH + 10, '🏆  Classement  [L]', {
+        font: 'bold 12px sans-serif',
+        color: '#ffdd44',
+        backgroundColor: '#222a3a',
+        padding: { x: 12, y: 8 }
+      }).setOrigin(1, 0).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      this.leaderboardBtn.on('pointerover', () => this.leaderboardBtn.setStyle({ backgroundColor: '#3a4a5a' }));
+      this.leaderboardBtn.on('pointerout', () => this.leaderboardBtn.setStyle({ backgroundColor: '#222a3a' }));
+      this.leaderboardBtn.on('pointerdown', () => this.toggleLeaderboardOverlay());
+      this.input.keyboard.on('keydown-L', () => this.toggleLeaderboardOverlay());
 
       // ─── Help discret en bas ───
       this.helpText = this.add.text(scrW / 2, scrH - 18,
@@ -4838,9 +4878,126 @@
       if (!this.globalBestText) return;
       if (this.cachedTop && this.cachedTop.length > 0) {
         const w = this.cachedTop[0];
-        this.globalBestText.setText(`👑 ${w.pseudo} — ${parseFloat(w.time).toFixed(2)}s`);
-      } else if (Leaderboard.isConfigured()) {
-        this.globalBestText.setText('👑 sois le 1er à finir !');
+        this.globalBestText.setText(`🌍  record : ${parseFloat(w.time).toFixed(2)}s · ${w.pseudo}`);
+      } else if (!Leaderboard.isConfigured()) {
+        this.globalBestText.setText('🌍  record : —');
+      } else {
+        this.globalBestText.setText('🌍  record : sois le 1er à finir !');
+      }
+    }
+
+    updatePersoBestUI() {
+      if (!this.persoBestText) return;
+      const persoBest = Player.getBest(this.levelIndex);
+      this.persoBestText.setText(persoBest !== null
+        ? '★  perso : ' + persoBest.toFixed(2) + 's'
+        : '★  perso : —');
+    }
+
+    // === Overlay leaderboard top 10 in-game (sans switch de scene) ===
+    toggleLeaderboardOverlay() {
+      if (this.leaderboardOverlay) {
+        this.closeLeaderboardOverlay();
+      } else {
+        this.openLeaderboardOverlay();
+      }
+    }
+
+    openLeaderboardOverlay() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.leaderboardOverlay = this.add.container(0, 0).setScrollFactor(0).setDepth(1000);
+
+      const dim = this.add.rectangle(0, 0, w, h, 0x000000, 0.78).setOrigin(0).setScrollFactor(0);
+      dim.setInteractive();
+      dim.on('pointerdown', () => this.closeLeaderboardOverlay());
+      this.leaderboardOverlay.add(dim);
+
+      const panelW = Math.min(440, w - 40);
+      const panelH = Math.min(540, h - 80);
+      const panelX = (w - panelW) / 2;
+      const panelY = (h - panelH) / 2;
+      const panel = this.add.graphics().setScrollFactor(0);
+      panel.fillStyle(0x0a0e1a, 0.96);
+      panel.fillRoundedRect(panelX, panelY, panelW, panelH, 14);
+      panel.lineStyle(2, 0xffdd44, 0.6);
+      panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 14);
+      this.leaderboardOverlay.add(panel);
+
+      const title = this.add.text(w / 2, panelY + 24, '🏆  CLASSEMENT', {
+        font: 'bold 26px sans-serif', color: '#ffdd44',
+        stroke: '#000', strokeThickness: 3
+      }).setOrigin(0.5, 0).setScrollFactor(0);
+      this.leaderboardOverlay.add(title);
+
+      const mapName = this.add.text(w / 2, panelY + 60, LEVELS[this.levelIndex].name, {
+        font: '14px sans-serif', color: '#aaa'
+      }).setOrigin(0.5, 0).setScrollFactor(0);
+      this.leaderboardOverlay.add(mapName);
+
+      const status = this.add.text(w / 2, panelY + panelH / 2, 'chargement...', {
+        font: 'bold 14px sans-serif', color: '#888'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.leaderboardOverlay.add(status);
+
+      const closeBtn = this.add.text(panelX + panelW - 14, panelY + 14, '✕', {
+        font: 'bold 22px sans-serif', color: '#fff',
+        backgroundColor: '#553333', padding: { x: 10, y: 4 }
+      }).setOrigin(1, 0).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      closeBtn.on('pointerdown', () => this.closeLeaderboardOverlay());
+      this.leaderboardOverlay.add(closeBtn);
+
+      // Hint
+      const hint = this.add.text(w / 2, panelY + panelH - 22, 'L  ou  ✕  pour fermer · clic ailleurs aussi', {
+        font: '11px sans-serif', color: '#666'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.leaderboardOverlay.add(hint);
+
+      // Charge le top 10
+      if (!Leaderboard.isConfigured()) {
+        status.setText('classement non configuré');
+        status.setColor('#ff8866');
+        return;
+      }
+      Leaderboard.top(this.levelIndex, 10).then(top => {
+        if (!this.leaderboardOverlay) return; // fermé entre temps
+        status.destroy();
+        if (!top || !top.length) {
+          const empty = this.add.text(w / 2, panelY + panelH / 2, 'aucun temps enregistré sur cette map.\nSois le 1er à finir !', {
+            font: 'bold 14px sans-serif', color: '#aaa', align: 'center'
+          }).setOrigin(0.5).setScrollFactor(0);
+          this.leaderboardOverlay.add(empty);
+          return;
+        }
+        const myName = Player.getName();
+        const medals = ['🥇', '🥈', '🥉'];
+        top.forEach((row, i) => {
+          const isMe = row.pseudo === myName;
+          const rank = medals[i] || (i + 1) + '.';
+          const line = `${rank}  ${row.pseudo}${isMe ? ' (toi)' : ''}`;
+          const time = parseFloat(row.time).toFixed(2) + 's';
+          const yLine = panelY + 100 + i * 32;
+          const lText = this.add.text(panelX + 28, yLine, line, {
+            font: 'bold 15px monospace',
+            color: isMe ? '#ffdd44' : (i === 0 ? '#ffdd44' : '#fff')
+          }).setOrigin(0, 0.5).setScrollFactor(0);
+          const tText = this.add.text(panelX + panelW - 28, yLine, time, {
+            font: 'bold 16px monospace',
+            color: isMe ? '#ffdd44' : '#aaffaa'
+          }).setOrigin(1, 0.5).setScrollFactor(0);
+          this.leaderboardOverlay.add(lText);
+          this.leaderboardOverlay.add(tText);
+        });
+      }).catch(() => {
+        status.setText('erreur de chargement');
+        status.setColor('#ff8866');
+      });
+    }
+
+    closeLeaderboardOverlay() {
+      if (this.leaderboardOverlay) {
+        this.leaderboardOverlay.destroy();
+        this.leaderboardOverlay = null;
       }
     }
 
@@ -4857,8 +5014,9 @@
     endChallenge() {
       if (window.audio) window.audio.stopEngine();
 
-      // Mode serveur : ne lance pas ChallengeEnd, on attend les events du serveur
-      if (this.mode === 'server') {
+      // Mode serveur (public OU privé) : ne lance pas ChallengeEnd, on attend les events du serveur
+      // (sinon on aurait 2 écrans de fin : privateMapEndOverlay + ChallengeEndScene)
+      if (this.mode === 'server' || this.mode === 'private-server') {
         return;
       }
 
@@ -5608,10 +5766,19 @@
       if (prev === null || this.elapsed < prev) {
         Player.setBest(this.levelIndex, this.elapsed);
         newBest = true;
+        // Met à jour le HUD perso et le label "★ meilleur" du panel gauche
+        this.updatePersoBestUI();
+        if (this.bestText) {
+          this.bestText.setText('★  meilleur : ' + this.elapsed.toFixed(2) + 's');
+        }
       }
       // Best de la session (challenge)
       if (this.sessionBestTime === null || this.elapsed < this.sessionBestTime) {
         this.sessionBestTime = this.elapsed;
+        // Met à jour le HUD session
+        if (this.sessionBestText) {
+          this.sessionBestText.setText('⚡  session : ' + this.sessionBestTime.toFixed(2) + 's');
+        }
         // Sauvegarde du replay (multi P2P + salon privé)
         if ((this.conn || this.mode === 'private-server') && this.recordingFrames.length > 0) {
           this.bestRunReplay = {
@@ -6698,7 +6865,11 @@
           backgroundColor: '#44aa44', padding: { x: 20, y: 12 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
         lobbyBtn.on('pointerdown', () => {
+          // Defensive : stoppe d'éventuelles scènes parasites (ChallengeEnd lancé par
+          // un ancien chemin) avant de basculer dans le lobby
           this.scene.stop('Game');
+          this.scene.stop('ChallengeEnd');
+          this.scene.stop('GameOver');
           this.scene.start('PrivateRoom', {
             returnToLobby: true,
             roomCode: this.roomCode,
@@ -6715,6 +6886,8 @@
         menuBtn.on('pointerdown', () => {
           ServerConn.disconnect();
           this.scene.stop('Game');
+          this.scene.stop('ChallengeEnd');
+          this.scene.stop('GameOver');
           this.scene.start('Menu');
         });
       } else {
