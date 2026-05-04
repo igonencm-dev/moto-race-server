@@ -280,20 +280,37 @@ function endPrivateMap(room) {
 }
 
 function startNextPrivateMap(room) {
-  // Si BO terminé, on passe en finished
+  // Si BO terminé, on revient au lobby (les joueurs peuvent relancer un nouveau BO sans quitter)
   if (room.currentSeqIdx >= room.mapSequence.length - 1) {
-    room.lobbyState = 'finished';
+    room.lobbyState = 'waiting';
+    room.currentSeqIdx = 0;
+    room.replaysSent.clear();
+    // Reset bests perso pour le prochain BO
+    for (const p of room.players.values()) {
+      p.sessionBest = null;
+      p.runCount = 0;
+    }
+    const bestPerMapPayload = room.bestPerMap.map(b => ({
+      seqIdx: b.seqIdx,
+      mapIdx: b.mapIdx,
+      scores: b.scores,
+      winnerId: b.winnerId,
+      winnerReplay: b.winnerReplay
+    }));
+    const playerList = Array.from(room.players.values()).map(p => ({
+      id: p.id, pseudo: p.pseudo, isHost: p.id === room.hostId
+    }));
     broadcast(room, {
       type: 'privateBOEnd',
-      bestPerMap: room.bestPerMap.map(b => ({
-        seqIdx: b.seqIdx,
-        mapIdx: b.mapIdx,
-        scores: b.scores,
-        winnerId: b.winnerId,
-        winnerReplay: b.winnerReplay
-      }))
+      bestPerMap: bestPerMapPayload,
+      // Données du lobby pour permettre le retour
+      roomCode: room.id.replace(/^priv-/, ''),
+      hostId: room.hostId,
+      mapSequence: room.mapSequence,
+      durationPerMap: room.durationPerMap,
+      players: playerList
     });
-    log(`🏆 Salon privé "${room.id}" : BO terminé`);
+    log(`🏆 Salon privé "${room.id}" : BO terminé, retour lobby`);
     return;
   }
   room.currentSeqIdx++;
@@ -466,6 +483,27 @@ wss.on('connection', (ws, req) => {
       if (!room || room.kind !== 'private' || !player || player.id !== room.hostId) return;
       if (room.lobbyState !== 'waiting') return;
       startPrivateBO(room);
+      return;
+    }
+
+    // === Le host change la config du salon (entre 2 BOs ou avant le 1er) ===
+    if (msg.type === 'updateConfig') {
+      if (!room || room.kind !== 'private' || !player || player.id !== room.hostId) return;
+      if (room.lobbyState !== 'waiting') return;
+      const mapSeq = Array.isArray(msg.mapSequence) ? msg.mapSequence.slice(0, 5) : null;
+      const dur = parseInt(msg.durationPerMap);
+      if (!mapSeq || !mapSeq.length || isNaN(dur) || dur < 30 || dur > 600) {
+        try { ws.send(JSON.stringify({ type: 'error', error: 'config_invalide' })); } catch (e) {}
+        return;
+      }
+      room.mapSequence = mapSeq;
+      room.durationPerMap = dur;
+      broadcast(room, {
+        type: 'configUpdated',
+        mapSequence: room.mapSequence,
+        durationPerMap: room.durationPerMap
+      });
+      log(`⚙  Salon "${room.id}" : config mise à jour par ${player.pseudo}`);
       return;
     }
 

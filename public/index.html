@@ -2749,15 +2749,32 @@
   class PrivateRoomScene extends Phaser.Scene {
     constructor() { super('PrivateRoom'); }
 
+    init(data) {
+      this.initData = data || {};
+    }
+
     create() {
-      this.state = 'entry';            // 'entry' / 'createConfig' / 'joining' / 'lobby'
+      this.state = 'entry';
       this.selectedMaps = [];
-      this.duration = 180;             // secondes
+      this.duration = 180;
       this.currentTier = 1;
-      this.lobbyPlayers = [];          // [{ id, pseudo, isHost }]
+      this.lobbyPlayers = [];
       this.isHost = false;
       this.roomCode = null;
       this.serverListeners = {};
+
+      // Mode "retour au lobby" : on saute l'entry et on va direct au lobby
+      // (la WebSocket ServerConn est encore connectée depuis le BO précédent)
+      if (this.initData.returnToLobby) {
+        this.roomCode = this.initData.roomCode;
+        this.lobbyMapSequence = this.initData.mapSequence;
+        this.lobbyDuration = this.initData.durationPerMap;
+        this.lobbyPlayers = (this.initData.players || []).slice();
+        this.isHost = (this.initData.hostId === ServerConn.myId);
+        this.attachServerListeners();
+        this.renderLobby();
+        return;
+      }
 
       if (!Player.getName()) {
         showPseudoOverlay(() => this.renderEntry());
@@ -3146,6 +3163,7 @@
     refreshLobbyAction() {
       if (this.lobbyActionBtn) { this.lobbyActionBtn.destroy(); this.lobbyActionBtn = null; }
       if (this.lobbyActionLabel) { this.lobbyActionLabel.destroy(); this.lobbyActionLabel = null; }
+      if (this.lobbyEditBtn) { this.lobbyEditBtn.destroy(); this.lobbyEditBtn = null; }
       const w = this.scale.width;
       if (this.isHost) {
         const enabled = this.lobbyPlayers.length >= 1;
@@ -3159,11 +3177,90 @@
             ServerConn.send({ type: 'startBO' });
           }
         });
+        // Bouton modifier la config (uniquement host)
+        this.lobbyEditBtn = this.add.text(w / 2, this.lobbyActionY - 50, '⚙  Modifier maps / durée', {
+          font: 'bold 13px sans-serif', color: '#ffaa66',
+          backgroundColor: '#333', padding: { x: 14, y: 8 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        this.lobbyEditBtn.on('pointerdown', () => this.renderEditConfig());
       } else {
         this.lobbyActionLabel = this.add.text(w / 2, this.lobbyActionY, '⏳  En attente du host pour lancer la course...', {
           font: 'bold 16px sans-serif', color: '#aaa'
         }).setOrigin(0.5);
       }
+    }
+
+    // Modifie la config maps/durée depuis le lobby (host)
+    renderEditConfig() {
+      this.clear();
+      this.state = 'editConfig';
+      this.drawHeader('⚙  MODIFIER LE SALON', 'Choisis 1 à 5 maps + la durée par map');
+      const w = this.scale.width;
+      const h = this.scale.height;
+
+      // Pré-remplit avec la config courante
+      this.selectedMaps = (this.lobbyMapSequence || []).slice();
+      this.duration = this.lobbyDuration || 180;
+      this.currentTier = 1;
+
+      // Tabs niveau 1/2
+      this.tierTabs = [];
+      [1, 2].forEach((tier, idx) => {
+        const x = w / 2 + (idx - 0.5) * 160;
+        const tab = this.add.text(x, 130, `🏆  NIVEAU ${tier}`, {
+          font: 'bold 14px sans-serif', color: '#ccc',
+          backgroundColor: '#222a3a', padding: { x: 18, y: 8 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        tab.on('pointerdown', () => { this.currentTier = tier; this.refreshConfigUI(); });
+        this.tierTabs.push({ btn: tab, tier });
+      });
+
+      this.add.text(w / 2, 170, 'DURÉE PAR MAP', {
+        font: 'bold 11px sans-serif', color: '#ffaa66'
+      }).setOrigin(0.5);
+      this.durationButtons = [];
+      [
+        { label: '1 min', val: 60 },
+        { label: '3 min', val: 180 },
+        { label: '5 min', val: 300 }
+      ].forEach((opt, idx) => {
+        const x = w / 2 + (idx - 1) * 100;
+        const btn = this.add.text(x, 196, opt.label, {
+          font: 'bold 14px sans-serif', color: '#aaa',
+          backgroundColor: '#222a3a', padding: { x: 16, y: 6 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        btn.on('pointerdown', () => { this.duration = opt.val; this.refreshConfigUI(); });
+        this.durationButtons.push({ btn, val: opt.val });
+      });
+
+      this.counterText = this.add.text(w / 2, 228, '0 / 5 maps sélectionnées', {
+        font: 'bold 12px sans-serif', color: '#aaa'
+      }).setOrigin(0.5);
+
+      this.cardsContainer = this.add.container(0, 0);
+
+      // Bouton sauvegarder
+      this.createBtn = this.add.text(w / 2 - 100, h - 50, '💾  SAUVEGARDER', {
+        font: 'bold 16px sans-serif', color: '#fff',
+        backgroundColor: '#44aa44', padding: { x: 20, y: 10 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      this.createBtn.on('pointerdown', () => {
+        if (!this.selectedMaps.length) return;
+        ServerConn.send({
+          type: 'updateConfig',
+          mapSequence: this.selectedMaps.slice(),
+          durationPerMap: this.duration
+        });
+        // Le retour au lobby se fait via configUpdated (broadcast serveur)
+      });
+      // Bouton annuler
+      const cancelBtn = this.add.text(w / 2 + 100, h - 50, 'Annuler', {
+        font: 'bold 14px sans-serif', color: '#fff',
+        backgroundColor: '#666', padding: { x: 18, y: 10 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      cancelBtn.on('pointerdown', () => this.renderLobby());
+
+      this.refreshConfigUI();
     }
 
     // ============== ÉCOUTE DES MESSAGES SERVEUR ==============
@@ -3208,6 +3305,14 @@
         if (this.state === 'lobby') {
           this.refreshLobbyPlayers();
           this.refreshLobbyAction();
+        }
+      });
+      reg('configUpdated', (m) => {
+        // Le host vient de modifier la config : tout le monde voit le lobby rafraîchi
+        this.lobbyMapSequence = m.mapSequence;
+        this.lobbyDuration = m.durationPerMap;
+        if (this.state === 'lobby' || this.state === 'editConfig') {
+          this.renderLobby();
         }
       });
       reg('error', (m) => {
@@ -3713,13 +3818,18 @@
           },
           privateBOEnd: (msg) => {
             if (!isPrivate) return;
-            // Fin du BO complet : on affiche le récap final
+            // Fin du BO complet : on affiche le récap final + propage les data du lobby
             this.scene.pause();
             this.scene.launch('PrivateBOEnd', {
               bestPerMap: msg.bestPerMap,
               myId: ServerConn.myId,
               myPseudo: Player.getName() || '?',
-              players: Array.from(this.ghosts.entries()).map(([id, g]) => ({ id, pseudo: g.pseudo }))
+              players: msg.players || Array.from(this.ghosts.entries()).map(([id, g]) => ({ id, pseudo: g.pseudo })),
+              // Lobby data pour le bouton "Retour au lobby"
+              roomCode: msg.roomCode,
+              hostId: msg.hostId,
+              mapSequence: msg.mapSequence,
+              durationPerMap: msg.durationPerMap
             });
           },
           replayBroadcast: (msg) => {
@@ -6495,6 +6605,11 @@
       this.myId = data.myId;
       this.myPseudo = data.myPseudo || '?';
       this.players = data.players || [];
+      // Données du lobby (pour le bouton "Retour au lobby")
+      this.roomCode = data.roomCode || null;
+      this.hostId = data.hostId || null;
+      this.mapSequence = data.mapSequence || null;
+      this.durationPerMap = data.durationPerMap || null;
     }
 
     create() {
@@ -6585,16 +6700,43 @@
         }
       });
 
-      // Boutons retour
-      const backBtn = this.add.text(w / 2, h - 50, 'Retour menu', {
-        font: 'bold 18px sans-serif', color: '#fff',
-        backgroundColor: '#ff5533', padding: { x: 26, y: 12 }
-      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-      backBtn.on('pointerdown', () => {
-        ServerConn.disconnect();
-        this.scene.stop('Game');
-        this.scene.start('Menu');
-      });
+      // Boutons : retour au lobby (garde le salon) ou retour menu (quitte)
+      if (this.roomCode) {
+        const lobbyBtn = this.add.text(w / 2 - 130, h - 50, '🏠  Retour au lobby', {
+          font: 'bold 16px sans-serif', color: '#fff',
+          backgroundColor: '#44aa44', padding: { x: 20, y: 12 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        lobbyBtn.on('pointerdown', () => {
+          this.scene.stop('Game');
+          this.scene.start('PrivateRoom', {
+            returnToLobby: true,
+            roomCode: this.roomCode,
+            hostId: this.hostId,
+            mapSequence: this.mapSequence,
+            durationPerMap: this.durationPerMap,
+            players: this.players
+          });
+        });
+        const menuBtn = this.add.text(w / 2 + 130, h - 50, 'Retour menu', {
+          font: 'bold 16px sans-serif', color: '#fff',
+          backgroundColor: '#ff5533', padding: { x: 20, y: 12 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        menuBtn.on('pointerdown', () => {
+          ServerConn.disconnect();
+          this.scene.stop('Game');
+          this.scene.start('Menu');
+        });
+      } else {
+        const backBtn = this.add.text(w / 2, h - 50, 'Retour menu', {
+          font: 'bold 18px sans-serif', color: '#fff',
+          backgroundColor: '#ff5533', padding: { x: 26, y: 12 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        backBtn.on('pointerdown', () => {
+          ServerConn.disconnect();
+          this.scene.stop('Game');
+          this.scene.start('Menu');
+        });
+      }
     }
   }
 
