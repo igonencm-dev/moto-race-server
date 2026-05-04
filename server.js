@@ -8,7 +8,7 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 
 // === Config ===
-const NUM_MAPS = 28;
+const NUM_MAPS = 31;
 const MAP_DURATION_MS = 5 * 60 * 1000;   // 5 min de course
 const TRANSITION_MS = 12 * 1000;          // 12 sec entre 2 maps (annonce des scores)
 
