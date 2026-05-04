@@ -1806,17 +1806,16 @@
       const h = this.scale.height;
       this.cameras.main.setBackgroundColor('#1a2030');
 
-      this.add.text(w / 2, 50, '🏆  CLASSEMENT MONDIAL  🏆', {
-        font: 'bold 36px sans-serif',
+      this.add.text(w / 2, 36, '🏆  CLASSEMENT MONDIAL  🏆', {
+        font: 'bold 30px sans-serif',
         color: '#ffdd44',
         stroke: '#000', strokeThickness: 4
       }).setOrigin(0.5);
 
-      this.add.text(w / 2, 88, 'meilleurs temps mondiaux par niveau', {
-        font: '13px sans-serif', color: '#aaa'
+      this.add.text(w / 2, 66, 'meilleurs temps mondiaux par niveau', {
+        font: '12px sans-serif', color: '#aaa'
       }).setOrigin(0.5);
 
-      // Pseudo en haut à droite
       const pseudo = Player.getName();
       if (pseudo) {
         this.add.text(w - 20, 24, '👤 ' + pseudo, {
@@ -1827,7 +1826,6 @@
         }).setOrigin(1, 0);
       }
 
-      // Bouton retour menu
       const back = this.add.text(20, 20, '← Menu', {
         font: 'bold 14px sans-serif',
         color: '#aaa',
@@ -1836,56 +1834,228 @@
       }).setInteractive({ useHandCursor: true });
       back.on('pointerdown', () => this.scene.start('Menu'));
 
-      // Boutons de sélection de map (grille)
-      const cols = 6;
-      const btnW = Math.min(95, (w - 80) / cols);
-      const btnH = 38;
-      const gap = 8;
-      const totalW = cols * btnW + (cols - 1) * gap;
-      const startX = (w - totalW) / 2;
-      const startY = 130;
-
-      this.mapButtons = [];
-      LEVELS.forEach((level, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const x = startX + col * (btnW + gap);
-        const y = startY + row * (btnH + gap);
-        const btn = this.add.text(x + btnW / 2, y + btnH / 2, 'N°' + (i + 1), {
-          font: 'bold 14px sans-serif',
-          color: '#fff',
-          backgroundColor: '#444',
-          padding: { x: 10, y: 6 }
+      // === Tier tabs ===
+      this.currentTier = 1;
+      this.tierTabs = [];
+      const tiers = [...new Set(LEVELS.map(l => l.tier || 1))].sort();
+      const tabSpacing = 160;
+      tiers.forEach((tier, idx) => {
+        const x = w / 2 + (idx - (tiers.length - 1) / 2) * tabSpacing;
+        const tab = this.add.text(x, 100, `🏆  NIVEAU ${tier}`, {
+          font: 'bold 13px sans-serif',
+          color: '#ccc',
+          backgroundColor: '#222a3a',
+          padding: { x: 18, y: 7 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-        btn.on('pointerdown', () => this.selectMap(i));
-        this.mapButtons.push(btn);
+        tab.on('pointerdown', () => this.switchTier(tier));
+        this.tierTabs.push({ btn: tab, tier });
       });
 
-      // Nom de la map sélectionnée
-      const rowsCount = Math.ceil(LEVELS.length / cols);
-      const afterButtonsY = startY + rowsCount * (btnH + gap) + 20;
-      this.mapNameText = this.add.text(w / 2, afterButtonsY, '', {
-        font: 'bold 24px sans-serif',
-        color: '#ffaa66',
-        stroke: '#000', strokeThickness: 3
-      }).setOrigin(0.5);
+      // === Grille des cartes de maps (avec thumbnails) ===
+      this.mapCards = [];
+      this.cardsStartY = 130;
 
-      this.scoresStartY = afterButtonsY + 40;
+      // === Zone de scores (sera remplie par loadScores) ===
+      this.scoresPanel = null;
       this.scoreTexts = [];
 
-      this.selectedMap = 0;
-      this.selectMap(0);
+      this.selectedMap = LEVELS.findIndex(l => (l.tier || 1) === this.currentTier);
+      if (this.selectedMap < 0) this.selectedMap = 0;
+      this.refreshTabs();
+      this.refreshGrid();
+      this.selectMap(this.selectedMap);
+    }
+
+    refreshTabs() {
+      this.tierTabs.forEach(t => {
+        t.btn.setStyle({
+          color: t.tier === this.currentTier ? '#ffdd44' : '#ccc',
+          backgroundColor: t.tier === this.currentTier ? '#3a2a1a' : '#222a3a'
+        });
+      });
+    }
+
+    switchTier(tier) {
+      if (this.currentTier === tier) return;
+      this.currentTier = tier;
+      this.refreshTabs();
+      this.refreshGrid();
+      // Sélectionne la 1ère map du nouveau tier
+      const firstIdx = LEVELS.findIndex(l => (l.tier || 1) === tier);
+      if (firstIdx >= 0) this.selectMap(firstIdx);
+    }
+
+    refreshGrid() {
+      // Nettoie l'ancienne grille
+      this.mapCards.forEach(c => c.container.destroy());
+      this.mapCards = [];
+
+      const w = this.scale.width;
+      const h = this.scale.height;
+      const filtered = LEVELS.map((l, i) => ({ l, i })).filter(x => (x.l.tier || 1) === this.currentTier);
+      const cardW = 110, cardH = 76;
+      const gap = 8;
+      const cols = Math.max(4, Math.min(8, Math.floor((w - 40) / (cardW + gap))));
+      const rows = Math.ceil(filtered.length / cols);
+      const totalW = cols * cardW + (cols - 1) * gap;
+      const startX = (w - totalW) / 2;
+
+      filtered.forEach((entry, idx) => {
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        const x = startX + col * (cardW + gap);
+        const y = this.cardsStartY + row * (cardH + gap);
+        const card = this.makeLeaderboardCard(x, y, cardW, cardH, entry.l, entry.i);
+        this.mapCards.push(card);
+      });
+
+      this.gridBottomY = this.cardsStartY + rows * (cardH + gap) + 8;
+    }
+
+    makeLeaderboardCard(x, y, cw, ch, level, mapIndex) {
+      const container = this.add.container(x, y);
+      const bg = this.add.graphics();
+      bg.fillStyle(0x222a3a, 1);
+      bg.fillRoundedRect(0, 0, cw, ch, 6);
+      bg.lineStyle(2, 0x444, 1);
+      bg.strokeRoundedRect(0, 0, cw, ch, 6);
+      container.add(bg);
+
+      // Thumbnail (terrain miniature)
+      const thumbW = cw - 12, thumbH = 36;
+      const thumbX = 6, thumbY = 6;
+      const tg = this.add.graphics();
+      this.drawLeaderboardThumb(tg, thumbX, thumbY, thumbW, thumbH, level);
+      container.add(tg);
+
+      // Nom
+      const text = this.add.text(cw / 2, thumbY + thumbH + 4, level.name, {
+        font: 'bold 10px sans-serif',
+        color: '#fff',
+        wordWrap: { width: cw - 8 },
+        align: 'center'
+      }).setOrigin(0.5, 0);
+      container.add(text);
+
+      // Best perso (si dispo)
+      const best = Player.getBest(mapIndex);
+      const bestStr = best !== null ? '★ ' + best.toFixed(2) + 's' : '';
+      const bestText = this.add.text(cw / 2, ch - 11, bestStr, {
+        font: 'bold 9px monospace',
+        color: '#ffaa66'
+      }).setOrigin(0.5, 0);
+      container.add(bestText);
+
+      const hit = new Phaser.Geom.Rectangle(0, 0, cw, ch);
+      container.setSize(cw, ch);
+      container.setInteractive(hit, Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
+      container.on('pointerdown', () => this.selectMap(mapIndex));
+      container.on('pointerover', () => container.setAlpha(0.85));
+      container.on('pointerout', () => container.setAlpha(1));
+
+      return { container, bg, mapIndex };
+    }
+
+    drawLeaderboardThumb(g, x, y, w, h, level) {
+      const points = level.terrain;
+      if (!points || points.length === 0) return;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      const padding = 2;
+      const availW = w - padding * 2;
+      const availH = h - padding * 2;
+      const rangeX = (maxX - minX) || 1;
+      const rangeY = (maxY - minY) || 1;
+      const scale = Math.min(availW / rangeX, availH / rangeY);
+      const offsetX = x + padding + (availW - rangeX * scale) / 2;
+      const offsetY = y + padding + (availH - rangeY * scale) / 2;
+
+      // Fond (cave ou ciel)
+      const isCave = (level.tier || 1) === 2;
+      g.fillStyle(isCave ? 0x1a0e0a : 0x4a6580, 1);
+      g.fillRoundedRect(x, y, w, h, 4);
+
+      // Terrain (chunks)
+      g.fillStyle(0x6a4a30);
+      const bottom = y + h - 1;
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        if (p1.gap) continue;
+        const p2 = points[i + 1];
+        const x1 = offsetX + (p1.x - minX) * scale;
+        const y1 = offsetY + (p1.y - minY) * scale;
+        const x2 = offsetX + (p2.x - minX) * scale;
+        const y2 = offsetY + (p2.y - minY) * scale;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        g.lineTo(x2, y2);
+        g.lineTo(x2, bottom);
+        g.lineTo(x1, bottom);
+        g.closePath();
+        g.fillPath();
+      }
+      // Ligne d'herbe
+      g.lineStyle(1.5, 0x66cc55);
+      let lineStarted = false;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        if (p.gap) { lineStarted = false; continue; }
+        const cx = offsetX + (p.x - minX) * scale;
+        const cy = offsetY + (p.y - minY) * scale;
+        if (!lineStarted) { g.beginPath(); g.moveTo(cx, cy); lineStarted = true; }
+        else g.lineTo(cx, cy);
+      }
+      if (lineStarted) g.strokePath();
+      // Plafonds polygones (tier 2)
+      if (level.ceilings && level.ceilings.length > 0 && level.ceilings[0].w === undefined) {
+        g.fillStyle(0x4a3a2a);
+        g.beginPath();
+        const c0 = level.ceilings[0];
+        g.moveTo(offsetX + (c0.x - minX) * scale, y + padding);
+        for (const p of level.ceilings) {
+          if (p.gap) continue;
+          g.lineTo(offsetX + (p.x - minX) * scale, offsetY + (p.y - minY) * scale);
+        }
+        const cN = level.ceilings[level.ceilings.length - 1];
+        g.lineTo(offsetX + (cN.x - minX) * scale, y + padding);
+        g.closePath();
+        g.fillPath();
+      }
+      // Drapeau d'arrivée
+      if (level.finishX !== undefined) {
+        const fx = offsetX + (level.finishX - minX) * scale;
+        const lastP = points[points.length - 1];
+        const fy = offsetY + (lastP.y - minY) * scale;
+        g.fillStyle(0xff5533);
+        g.fillTriangle(fx, fy - 14, fx + 5, fy - 11, fx, fy - 8);
+        g.lineStyle(1, 0xeeeeee);
+        g.lineBetween(fx, fy - 14, fx, fy);
+      }
     }
 
     selectMap(idx) {
       this.selectedMap = idx;
-      this.mapButtons.forEach((btn, i) => {
-        btn.setStyle({
-          backgroundColor: i === idx ? '#ff5533' : '#444',
-          color: i === idx ? '#fff' : '#ccc'
-        });
+      // Switch automatiquement de tier si la map appartient à un autre tier
+      const tier = LEVELS[idx].tier || 1;
+      if (tier !== this.currentTier) {
+        this.currentTier = tier;
+        this.refreshTabs();
+        this.refreshGrid();
+      }
+      // Highlight la carte sélectionnée
+      this.mapCards.forEach(c => {
+        const isSelected = c.mapIndex === idx;
+        c.bg.clear();
+        c.bg.fillStyle(isSelected ? 0x3a2a1a : 0x222a3a, 1);
+        c.bg.fillRoundedRect(0, 0, c.container.width, c.container.height, 6);
+        c.bg.lineStyle(2, isSelected ? 0xffdd44 : 0x444, 1);
+        c.bg.strokeRoundedRect(0, 0, c.container.width, c.container.height, 6);
       });
-      this.mapNameText.setText(LEVELS[idx].name);
       this.loadScores(idx);
     }
 
@@ -1895,28 +2065,39 @@
       this.scoreTexts = [];
 
       const w = this.scale.width;
-      const loading = this.add.text(w / 2, this.scoresStartY + 50, 'chargement...', {
-        font: '15px sans-serif', color: '#aaa'
+      const headerY = this.gridBottomY + 14;
+      const scoresY = headerY + 36;
+
+      // === Header : nom de la map sélectionnée ===
+      const lvl = LEVELS[idx];
+      const persoBest = Player.getBest(idx);
+      const persoStr = persoBest !== null ? '★ perso : ' + persoBest.toFixed(2) + 's' : '';
+      const headerText = this.add.text(w / 2, headerY,
+        `${lvl.name}${persoStr ? '  ·  ' + persoStr : ''}`, {
+          font: 'bold 20px sans-serif',
+          color: '#ffaa66',
+          stroke: '#000', strokeThickness: 3
+      }).setOrigin(0.5);
+      this.scoreTexts.push(headerText);
+
+      const loading = this.add.text(w / 2, scoresY + 50, 'chargement...', {
+        font: '14px sans-serif', color: '#aaa'
       }).setOrigin(0.5);
       this.scoreTexts.push(loading);
 
       const top = await Leaderboard.top(idx, 10);
-      // Si on a changé de map entre temps, ignore
       if (this.selectedMap !== idx) return;
-
-      this.scoreTexts.forEach(t => t.destroy());
-      this.scoreTexts = [];
+      if (loading) loading.destroy();
 
       if (!Leaderboard.isConfigured()) {
-        const t = this.add.text(w / 2, this.scoresStartY + 50, '(leaderboard non configuré)', {
+        const t = this.add.text(w / 2, scoresY + 50, '(leaderboard non configuré)', {
           font: '14px sans-serif', color: '#666'
         }).setOrigin(0.5);
         this.scoreTexts.push(t);
         return;
       }
-
       if (!top || top.length === 0) {
-        const t = this.add.text(w / 2, this.scoresStartY + 50, 'aucun score sur ce niveau — sois le premier !', {
+        const t = this.add.text(w / 2, scoresY + 50, 'aucun score sur ce niveau — sois le premier !', {
           font: 'bold 16px sans-serif', color: '#ff8866'
         }).setOrigin(0.5);
         this.scoreTexts.push(t);
@@ -1932,8 +2113,8 @@
         const rank = i < 3 ? medals[i] : `#${i + 1}`;
         const txt = `${rank}   ${s.pseudo}   —   ${parseFloat(s.time).toFixed(2)}s`;
         const color = isMe ? '#ff8833' : (i < 3 ? colors[i] : '#fff');
-        const t = this.add.text(w / 2, this.scoresStartY + i * 28, txt, {
-          font: 'bold 17px monospace',
+        const t = this.add.text(w / 2, scoresY + i * 26, txt, {
+          font: 'bold 16px monospace',
           color,
           stroke: '#000', strokeThickness: 2
         }).setOrigin(0.5);
@@ -1942,10 +2123,8 @@
 
       // Si le user n'est pas dans le top 10, montre son rang séparément
       if (myName && !top.some(s => s.pseudo === myName)) {
-        // Fetch tous les scores du level pour trouver le rang
         const ranking = await Leaderboard.top(idx, 100);
         if (this.selectedMap !== idx) return;
-        // Pour chaque pseudo, garder le meilleur temps
         const bestByPseudo = {};
         for (const s of ranking) {
           if (!bestByPseudo[s.pseudo] || parseFloat(s.time) < parseFloat(bestByPseudo[s.pseudo].time)) {
@@ -1956,9 +2135,9 @@
         const myRank = sorted.findIndex(s => s.pseudo === myName);
         if (myRank >= 0) {
           const me = sorted[myRank];
-          const t = this.add.text(w / 2, this.scoresStartY + 11 * 28 + 12,
+          const t = this.add.text(w / 2, scoresY + 11 * 26 + 12,
             `…   #${myRank + 1}   ${myName}   —   ${parseFloat(me.time).toFixed(2)}s`, {
-            font: 'bold 16px monospace',
+            font: 'bold 15px monospace',
             color: '#ff8833',
             stroke: '#000', strokeThickness: 2
           }).setOrigin(0.5);
@@ -4698,64 +4877,68 @@
       }
 
       // === Boost actif : pulse de force pendant 0.6s ===
+      // dt précalculé pour le boost (même normalisation que les inputs)
+      const boostDt = Math.min(2.5, Math.max(0.3, delta / 16.67));
       if (this.boostActive) {
         if (time >= this.boostEndsAt) {
           this.boostActive = false;
-        } else if (!this.crashed && !this.finished) {
+        } else if (!this.crashed && !this.finished && !this.privateTimeUpLock) {
           const a = this.bike.chassis.angle;
           Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
-            x: Math.cos(a) * 0.0035,
-            y: Math.sin(a) * 0.0035
+            x: Math.cos(a) * 0.0035 * boostDt,
+            y: Math.sin(a) * 0.0035 * boostDt
           });
         }
       }
 
       // === Inputs (flèches + ZQSD/WASD) ===
-      if (!this.crashed && !this.finished) {
+      // dt = facteur de normalisation par rapport à 60 fps (16.67ms par frame).
+      // Sans ça, un joueur à 144Hz applique 2.4× plus de forces par seconde → vitesse de fou.
+      const dt = Math.min(2.5, Math.max(0.3, delta / 16.67));
+      if (!this.crashed && !this.finished && !this.privateTimeUpLock) {
         const accel = this.cursors.right.isDown || this.keyD.isDown;
         const brake = this.cursors.left.isDown || this.keyA.isDown || this.keyQ.isDown;
         const tiltUp = this.cursors.up.isDown || this.keyW.isDown || this.keyZ.isDown;
         const tiltDown = this.cursors.down.isDown || this.keyS.isDown;
 
         if (accel) {
-          // roues qui tournent vite
+          // roues qui tournent vite (incréments scalés par dt pour être uniformes peu importe le FPS)
           Matter.Body.setAngularVelocity(this.bike.wheelBack,
-            Math.min(this.bike.wheelBack.angularVelocity + 0.10, 1.2));
+            Math.min(this.bike.wheelBack.angularVelocity + 0.10 * dt, 1.2));
           Matter.Body.setAngularVelocity(this.bike.wheelFront,
-            Math.min(this.bike.wheelFront.angularVelocity + 0.05, 1.2));
-          // poussée horizontale (plus forte)
+            Math.min(this.bike.wheelFront.angularVelocity + 0.05 * dt, 1.2));
+          // poussée horizontale (force scalée par dt)
           const a = this.bike.chassis.angle;
           Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
-            x: Math.cos(a) * 0.0024,
-            y: Math.sin(a) * 0.0024
+            x: Math.cos(a) * 0.0024 * dt,
+            y: Math.sin(a) * 0.0024 * dt
           });
         }
         if (brake) {
           Matter.Body.setAngularVelocity(this.bike.wheelBack,
-            Math.max(this.bike.wheelBack.angularVelocity - 0.09, -0.6));
+            Math.max(this.bike.wheelBack.angularVelocity - 0.09 * dt, -0.6));
           Matter.Body.setAngularVelocity(this.bike.wheelFront,
-            Math.max(this.bike.wheelFront.angularVelocity - 0.09, -0.6));
+            Math.max(this.bike.wheelFront.angularVelocity - 0.09 * dt, -0.6));
           const a = this.bike.chassis.angle;
           Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
-            x: -Math.cos(a) * 0.0012,
-            y: -Math.sin(a) * 0.0012
+            x: -Math.cos(a) * 0.0012 * dt,
+            y: -Math.sin(a) * 0.0012 * dt
           });
         }
         if (tiltUp) {
-          // Wheelie : couple plus fort + lift visible
           const onGround = this.contactCount > 0;
           const boost = (accel && onGround) ? 0.038 : 0.022;
           Matter.Body.setAngularVelocity(this.bike.chassis,
-            Math.max(this.bike.chassis.angularVelocity - boost, -0.8));
+            Math.max(this.bike.chassis.angularVelocity - boost * dt, -0.8));
           if (accel && onGround) {
             Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
-              x: 0, y: -0.0010
+              x: 0, y: -0.0010 * dt
             });
           }
         }
         if (tiltDown) {
           Matter.Body.setAngularVelocity(this.bike.chassis,
-            Math.min(this.bike.chassis.angularVelocity + 0.022, 0.8));
+            Math.min(this.bike.chassis.angularVelocity + 0.022 * dt, 0.8));
         }
       }
 
@@ -4819,17 +5002,25 @@
 
       // === Challenge timer ===
       if (this.challengeMode && this.challengeEndTime !== null && !this.challengeEnded) {
-        // En mode serveur : utilise Date.now() (horloge mur, sync entre joueurs via NTP)
+        // En mode serveur (public ou privé) : utilise Date.now() (horloge mur, sync entre joueurs)
         // En mode solo/multi P2P : utilise le temps Phaser local
         let remaining;
         if (this.mode === 'server' && this.serverState) {
           remaining = (this.serverState.mapStartedAt + this.serverState.mapDuration - Date.now()) / 1000;
+        } else if (this.mode === 'private-server' && this.privateState) {
+          remaining = (this.privateState.mapStartedAt + this.privateState.mapDuration - Date.now()) / 1000;
         } else {
           remaining = (this.challengeEndTime - time) / 1000;
         }
         if (remaining <= 0) {
           this.challengeEnded = true;
-          this.endChallenge();
+          if (this.mode === 'private-server') {
+            // Affiche un lock local (TEMPS ÉCOULÉ) pour que tous les joueurs
+            // arrêtent de jouer au même instant, en attendant le privateMapEnd du serveur
+            this.showPrivateTimeUpLock();
+          } else {
+            this.endChallenge();
+          }
         } else {
           if (remaining > 60) {
             const min = Math.floor(remaining / 60);
@@ -5422,8 +5613,58 @@
     }
 
     // Overlay de fin de map en mode salon privé : scoreboard + replay du gagnant
+    // Lock local affiché à l'expiration du timer en salon privé
+    // (en attendant que le serveur envoie privateMapEnd avec le scoreboard).
+    // Tous les joueurs voient ce lock au même instant (horloge mur partagée).
+    showPrivateTimeUpLock() {
+      if (this.privateTimeUpLock || this.serverEndOverlay) return;
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.privateTimeUpLock = this.add.container(0, 0).setScrollFactor(0).setDepth(900);
+      const dim = this.add.rectangle(0, 0, w, h, 0x000000, 0.55).setOrigin(0).setScrollFactor(0);
+      this.privateTimeUpLock.add(dim);
+      const title = this.add.text(w / 2, h / 2 - 20, 'TEMPS ÉCOULÉ', {
+        font: 'bold 56px sans-serif', color: '#ffdd44',
+        stroke: '#000', strokeThickness: 6
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.privateTimeUpLock.add(title);
+      const sub = this.add.text(w / 2, h / 2 + 36, 'calcul des scores du serveur...', {
+        font: 'bold 16px sans-serif', color: '#aaa'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.privateTimeUpLock.add(sub);
+      // Petit indicateur d'attente animé
+      this.privateTimeUpDots = this.add.text(w / 2, h / 2 + 64, '·', {
+        font: 'bold 20px monospace', color: '#666'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.privateTimeUpLock.add(this.privateTimeUpDots);
+      const dotsTimer = this.time.addEvent({
+        delay: 350,
+        loop: true,
+        callback: () => {
+          if (!this.privateTimeUpDots) return;
+          const cur = this.privateTimeUpDots.text;
+          this.privateTimeUpDots.setText(cur.length >= 5 ? '·' : cur + ' ·');
+        }
+      });
+      this._privateTimeUpDotsTimer = dotsTimer;
+    }
+
+    destroyPrivateTimeUpLock() {
+      if (this._privateTimeUpDotsTimer) {
+        try { this._privateTimeUpDotsTimer.remove(); } catch (e) {}
+        this._privateTimeUpDotsTimer = null;
+      }
+      if (this.privateTimeUpLock) {
+        this.privateTimeUpLock.destroy();
+        this.privateTimeUpLock = null;
+      }
+      this.privateTimeUpDots = null;
+    }
+
     privateMapEndOverlay(msg) {
       if (this.serverEndOverlay) return;
+      // Nettoie le lock local s'il est affiché
+      this.destroyPrivateTimeUpLock();
       this.challengeEnded = true;
       const w = this.scale.width;
       const h = this.scale.height;
