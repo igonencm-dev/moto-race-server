@@ -1602,9 +1602,14 @@
         && this.key && this.key !== 'SUPABASE_ANON_KEY';
     },
 
-    async submit(level, pseudo, time) {
+    async submit(level, pseudo, time, replay) {
       if (!this.isConfigured()) return false;
       try {
+        const body = { pseudo, level, time: parseFloat(time.toFixed(2)) };
+        // Le replay est facultatif : on l'attache uniquement aux nouveaux PB
+        // pour économiser de la bande passante (~5KB par replay).
+        // La colonne 'replay' (jsonb) doit exister dans la table Supabase.
+        if (replay && replay.frames) body.replay = replay;
         const res = await fetch(`${this.url}/rest/v1/moto_scores`, {
           method: 'POST',
           headers: {
@@ -1613,7 +1618,7 @@
             'Content-Type': 'application/json',
             'Prefer': 'return=minimal'
           },
-          body: JSON.stringify({ pseudo, level, time: parseFloat(time.toFixed(2)) })
+          body: JSON.stringify(body)
         });
         return res.ok;
       } catch (e) { console.warn('Leaderboard submit failed:', e); return false; }
@@ -1622,15 +1627,41 @@
     async top(level, n = 10) {
       if (!this.isConfigured()) return [];
       try {
-        const res = await fetch(`${this.url}/rest/v1/moto_scores?level=eq.${level}&order=time.asc&limit=${n}`, {
-          headers: {
-            'apikey': this.key,
-            'Authorization': `Bearer ${this.key}`
+        // Récupère seulement les colonnes légères (PAS le replay, pour économiser).
+        // L'id permettra de fetcher le replay à la demande via getReplay(id).
+        const res = await fetch(
+          `${this.url}/rest/v1/moto_scores?level=eq.${level}&order=time.asc&limit=${n}&select=id,pseudo,level,time`,
+          {
+            headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
           }
-        });
+        );
         if (!res.ok) return [];
         return await res.json();
       } catch (e) { console.warn('Leaderboard fetch failed:', e); return []; }
+    },
+
+    // Fetch le replay associé à un score précis (par son id).
+    // Retourne {time, frames, level, pseudo} ou null si pas de replay enregistré.
+    async getReplay(scoreId) {
+      if (!this.isConfigured() || !scoreId) return null;
+      try {
+        const res = await fetch(
+          `${this.url}/rest/v1/moto_scores?id=eq.${scoreId}&select=replay,pseudo,level,time`,
+          {
+            headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
+          }
+        );
+        if (!res.ok) return null;
+        const rows = await res.json();
+        if (!rows.length || !rows[0].replay) return null;
+        const row = rows[0];
+        const replay = row.replay;
+        // Garde les fallbacks si le replay stocké n'a pas tous les champs
+        if (!replay.pseudo) replay.pseudo = row.pseudo;
+        if (replay.level === undefined) replay.level = row.level;
+        if (replay.time === undefined) replay.time = parseFloat(row.time);
+        return replay;
+      } catch (e) { console.warn('Leaderboard getReplay failed:', e); return null; }
     }
   };
 
@@ -2271,12 +2302,25 @@
         const rank = i < 3 ? medals[i] : `#${i + 1}`;
         const txt = `${rank}   ${s.pseudo}   —   ${parseFloat(s.time).toFixed(2)}s`;
         const color = isMe ? '#ff8833' : (i < 3 ? colors[i] : '#fff');
-        const t = this.add.text(w / 2, scoresY + i * 26, txt, {
+        const yLine = scoresY + i * 28;
+        const t = this.add.text(w / 2, yLine, txt, {
           font: 'bold 16px monospace',
           color,
           stroke: '#000', strokeThickness: 2
         }).setOrigin(0.5);
         this.scoreTexts.push(t);
+        // Bouton ▶ replay (à droite de la ligne) — visible pour tous, on tente
+        // le fetch au clic ; si pas de replay attaché, on dit qu'il n'y en a pas.
+        if (s.id) {
+          const btn = this.add.text(w / 2 + 200, yLine, '▶', {
+            font: 'bold 14px sans-serif', color: '#fff',
+            backgroundColor: '#44aa44', padding: { x: 8, y: 4 }
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+          btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#55cc55' }));
+          btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#44aa44' }));
+          btn.on('pointerdown', () => this.tryPlayReplay(s));
+          this.scoreTexts.push(btn);
+        }
       });
 
       // Si le user n'est pas dans le top 10, montre son rang séparément
@@ -2293,15 +2337,51 @@
         const myRank = sorted.findIndex(s => s.pseudo === myName);
         if (myRank >= 0) {
           const me = sorted[myRank];
-          const t = this.add.text(w / 2, scoresY + 11 * 26 + 12,
+          const yLine = scoresY + 11 * 28 + 12;
+          const t = this.add.text(w / 2, yLine,
             `…   #${myRank + 1}   ${myName}   —   ${parseFloat(me.time).toFixed(2)}s`, {
             font: 'bold 15px monospace',
             color: '#ff8833',
             stroke: '#000', strokeThickness: 2
           }).setOrigin(0.5);
           this.scoreTexts.push(t);
+          if (me.id) {
+            const btn = this.add.text(w / 2 + 200, yLine, '▶', {
+              font: 'bold 14px sans-serif', color: '#fff',
+              backgroundColor: '#44aa44', padding: { x: 8, y: 4 }
+            }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+            btn.on('pointerdown', () => this.tryPlayReplay(me));
+            this.scoreTexts.push(btn);
+          }
         }
       }
+    }
+
+    async tryPlayReplay(scoreRow) {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      // Petit overlay "chargement..." pendant le fetch
+      const dim = this.add.rectangle(0, 0, w, h, 0x000000, 0.7).setOrigin(0).setDepth(1000);
+      const loading = this.add.text(w / 2, h / 2, '⏳  chargement du replay...', {
+        font: 'bold 18px sans-serif', color: '#fff'
+      }).setOrigin(0.5).setDepth(1001);
+      const replay = await Leaderboard.getReplay(scoreRow.id);
+      dim.destroy();
+      loading.destroy();
+      if (!replay || !replay.frames || !replay.frames.length) {
+        // Pas de replay enregistré pour ce score (ancien temps avant la feature)
+        const msg = this.add.text(w / 2, h / 2, '❌  Pas de replay disponible\npour ce temps', {
+          font: 'bold 16px sans-serif', color: '#ff8866', align: 'center',
+          backgroundColor: '#222', padding: { x: 18, y: 12 }
+        }).setOrigin(0.5).setDepth(1001);
+        this.time.delayedCall(2000, () => msg.destroy());
+        return;
+      }
+      this.scene.start('Replay', {
+        replay,
+        level: scoreRow.level !== undefined ? scoreRow.level : replay.level,
+        returnContext: { scene: 'Leaderboard', data: {} }
+      });
     }
   }
 
@@ -5222,9 +5302,10 @@
         }
       }
 
-      // === REPLAY : enregistrement des frames (multi P2P + salon privé) ===
-      const isMultiCtx = this.conn || this.mode === 'private-server';
-      if (isMultiCtx && this.startTime !== null && !this.finished && !this.crashed) {
+      // === REPLAY : enregistrement des frames (tous modes — utilisé pour
+      // partager au peer en multi P2P, à tous via serveur en salon privé,
+      // et pour attacher au leaderboard en solo / nouveau PB) ===
+      if (this.startTime !== null && !this.finished && !this.crashed) {
         if (time - this.lastRecordTime >= this.RECORD_INTERVAL_MS) {
           this.recordingFrames.push({
             t: time - this.startTime,
@@ -5423,15 +5504,26 @@
           const time = parseFloat(row.time).toFixed(2) + 's';
           const yLine = panelY + 100 + i * 32;
           const lText = this.add.text(panelX + 28, yLine, line, {
-            font: 'bold 15px monospace',
+            font: 'bold 14px monospace',
             color: isMe ? '#ffdd44' : (i === 0 ? '#ffdd44' : '#fff')
           }).setOrigin(0, 0.5).setScrollFactor(0);
-          const tText = this.add.text(panelX + panelW - 28, yLine, time, {
-            font: 'bold 16px monospace',
+          const tText = this.add.text(panelX + panelW - 56, yLine, time, {
+            font: 'bold 14px monospace',
             color: isMe ? '#ffdd44' : '#aaffaa'
           }).setOrigin(1, 0.5).setScrollFactor(0);
           this.leaderboardOverlay.add(lText);
           this.leaderboardOverlay.add(tText);
+          // Bouton ▶ replay (cliquable, fetch le replay du score puis lance ReplayScene)
+          if (row.id) {
+            const btn = this.add.text(panelX + panelW - 22, yLine, '▶', {
+              font: 'bold 13px sans-serif', color: '#fff',
+              backgroundColor: '#44aa44', padding: { x: 6, y: 3 }
+            }).setOrigin(1, 0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
+            btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#55cc55' }));
+            btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#44aa44' }));
+            btn.on('pointerdown', () => this.tryPlayLeaderboardReplay(row));
+            this.leaderboardOverlay.add(btn);
+          }
         });
       }).catch(() => {
         status.setText('erreur de chargement');
@@ -5444,6 +5536,34 @@
         this.leaderboardOverlay.destroy();
         this.leaderboardOverlay = null;
       }
+    }
+
+    async tryPlayLeaderboardReplay(scoreRow) {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      // Spinner pendant le fetch
+      const dim = this.add.rectangle(0, 0, w, h, 0x000000, 0.85).setOrigin(0).setScrollFactor(0).setDepth(2000);
+      const loading = this.add.text(w / 2, h / 2, '⏳  chargement du replay...', {
+        font: 'bold 18px sans-serif', color: '#fff'
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(2001);
+      const replay = await Leaderboard.getReplay(scoreRow.id);
+      dim.destroy();
+      loading.destroy();
+      if (!replay || !replay.frames || !replay.frames.length) {
+        const msg = this.add.text(w / 2, h / 2, '❌  Pas de replay disponible\npour ce temps', {
+          font: 'bold 16px sans-serif', color: '#ff8866', align: 'center',
+          backgroundColor: '#222', padding: { x: 18, y: 12 }
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(2001);
+        this.time.delayedCall(2200, () => msg.destroy());
+        return;
+      }
+      // Ferme l'overlay leaderboard et lance le replay
+      this.closeLeaderboardOverlay();
+      this.scene.start('Replay', {
+        replay,
+        level: scoreRow.level !== undefined ? scoreRow.level : replay.level,
+        returnTo: 'Menu'
+      });
     }
 
     updateOpponentBestUI() {
@@ -6267,26 +6387,32 @@
           this.bestText.setText('★  meilleur : ' + this.elapsed.toFixed(2) + 's');
         }
       }
+      // Construit le replay de cette run (utilisé pour multi/private + leaderboard si nouveau PB)
+      const runReplay = (this.recordingFrames.length > 0) ? {
+        time: this.elapsed,
+        frames: this.recordingFrames.slice(),
+        level: this.levelIndex,
+        pseudo: Player.getName()
+      } : null;
+
       // Best de la session (challenge)
       if (this.sessionBestTime === null || this.elapsed < this.sessionBestTime) {
         this.sessionBestTime = this.elapsed;
-        // Met à jour le HUD session
         if (this.sessionBestText) {
           this.sessionBestText.setText('⚡  session : ' + this.sessionBestTime.toFixed(2) + 's');
         }
-        // Sauvegarde du replay (multi P2P + salon privé)
-        if ((this.conn || this.mode === 'private-server') && this.recordingFrames.length > 0) {
-          this.bestRunReplay = {
-            time: this.elapsed,
-            frames: this.recordingFrames.slice(),
-            level: this.levelIndex,
-            pseudo: Player.getName()
-          };
+        // Sauvegarde du replay pour partage peer (multi P2P + salon privé)
+        if ((this.conn || this.mode === 'private-server') && runReplay) {
+          this.bestRunReplay = runReplay;
         }
       }
-      // Push score sur le leaderboard online (solo + multi + server)
+
+      // Push score sur le leaderboard online — replay attaché UNIQUEMENT
+      // si c'est un nouveau PB (sinon on spam la BDD avec des replays moins bons)
       const pseudo = Player.getName();
-      if (pseudo) Leaderboard.submit(this.levelIndex, pseudo, this.elapsed);
+      if (pseudo) {
+        Leaderboard.submit(this.levelIndex, pseudo, this.elapsed, newBest ? runReplay : null);
+      }
 
       if (this.conn && this.conn.open) {
         try { this.conn.send({ type: 'finished', time: this.elapsed }); } catch (e) {}
