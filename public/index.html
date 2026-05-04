@@ -1283,6 +1283,50 @@
       finishX: 4500,
       bikeStartY: 290
     },
+    // ============== MAP TIER 1 — TROUS D'EAU ==============
+    // Outdoor, 4 étangs à sauter (de plus en plus grands). Chaque étang est
+    // un gap dans le terrain avec un hazard 'water' visible dedans. Tomber
+    // dedans = crash. Petites rampes en amont pour donner du lift.
+    {
+      tier: 1,
+      name: 'Les Étangs',
+      terrain: [
+        // Plat de départ pour gagner de la vitesse
+        { x: -200, y: 350 }, { x: 500, y: 350 },
+        // Tremplin étang 1 (petit)
+        { x: 600, y: 300 },
+        { x: 600, y: 300, gap: true },
+        // Atterrissage 1
+        { x: 680, y: 350 }, { x: 1000, y: 350 },
+        // Tremplin étang 2 (medium)
+        { x: 1120, y: 290 },
+        { x: 1120, y: 290, gap: true },
+        // Atterrissage 2
+        { x: 1240, y: 350 }, { x: 1600, y: 350 },
+        // Tremplin étang 3 (gros — LE défi de la map)
+        { x: 1800, y: 250 },
+        { x: 1800, y: 250, gap: true },
+        // Atterrissage 3
+        { x: 2000, y: 350 }, { x: 2300, y: 350 },
+        // Tremplin étang 4
+        { x: 2440, y: 270 },
+        { x: 2440, y: 270, gap: true },
+        // Atterrissage 4 + plat final
+        { x: 2590, y: 350 }, { x: 2900, y: 350 },
+        { x: 3300, y: 350 }
+      ],
+      obstacles: [],
+      ceilings: [],
+      hazards: [
+        // 4 étangs avec eau (kind: 'water' pour le rendu bleu animé)
+        { x: 640, y: 480, w: 80, h: 240, kind: 'water' },     // étang 1 (80 wide)
+        { x: 1180, y: 480, w: 120, h: 240, kind: 'water' },   // étang 2 (120 wide)
+        { x: 1900, y: 500, w: 200, h: 220, kind: 'water' },   // étang 3 (200 wide, plus profond)
+        { x: 2515, y: 480, w: 150, h: 240, kind: 'water' }    // étang 4 (150 wide)
+      ],
+      finishX: 3250,
+      bikeStartY: 290
+    },
     // ============== MAP MULTI-CHEMINS ==============
     // Comme Le Gouffre, mais après le saut le joueur doit choisir entre
     // 3 tunnels stackés. Chacun a son propre drapeau d'arrivée. La hauteur
@@ -4791,20 +4835,46 @@
       const g = this.hazardsGfx;
       g.clear();
       this.hazards.forEach(h => {
-        // Lave principale
-        g.fillStyle(0xcc2200);
-        g.fillRect(h.x - h.w / 2, h.y - h.h / 2, h.w, h.h);
-        // Surface plus chaude (orange)
-        g.fillStyle(0xff5500);
-        g.fillRect(h.x - h.w / 2, h.y - h.h / 2, h.w, Math.min(8, h.h * 0.25));
-        // Bulles animées
         const t = this.hazardTime;
-        for (let i = 0; i < Math.floor(h.w / 25); i++) {
-          const phase = t + i * 0.7;
-          const bx = h.x - h.w / 2 + (i + 0.5) * (h.w / Math.floor(h.w / 25));
-          const bobY = h.y - h.h / 2 + 4 + (Math.sin(phase) * 2);
-          g.fillStyle(0xffcc00);
-          g.fillCircle(bx, bobY, 2 + (Math.sin(phase * 1.3) + 1));
+        const left = h.x - h.w / 2;
+        const top = h.y - h.h / 2;
+        if (h.kind === 'water') {
+          // === EAU : profondeur sombre + surface bleue + reflets + petites vagues ===
+          // Profondeur (bleu marine sombre)
+          g.fillStyle(0x0a3a6a);
+          g.fillRect(left, top + 6, h.w, h.h - 6);
+          // Eau principale (bleu medium)
+          g.fillStyle(0x2a78bb);
+          g.fillRect(left, top + 2, h.w, h.h - 2);
+          // Surface (bleu clair, ondulée)
+          g.fillStyle(0x6abadd);
+          g.fillRect(left, top, h.w, Math.min(6, h.h * 0.18));
+          // Petites vagues animées (cercles blancs translucides)
+          const numWaves = Math.floor(h.w / 35);
+          for (let i = 0; i < numWaves; i++) {
+            const phase = t * 0.6 + i * 1.1;
+            const wx = left + (i + 0.5) * (h.w / numWaves) + Math.cos(phase) * 5;
+            const wy = top + 3 + Math.sin(phase * 1.3) * 1.2;
+            g.fillStyle(0xffffff, 0.5);
+            g.fillCircle(wx, wy, 2 + Math.sin(phase * 1.5) * 0.6);
+          }
+          // Bordure herbeuse (les rives)
+          g.fillStyle(0x55aa44);
+          g.fillRect(left - 4, top - 3, 4, 6);
+          g.fillRect(left + h.w, top - 3, 4, 6);
+        } else {
+          // === LAVE (default) : rouge profond + orange chaud + bulles jaunes ===
+          g.fillStyle(0xcc2200);
+          g.fillRect(left, top, h.w, h.h);
+          g.fillStyle(0xff5500);
+          g.fillRect(left, top, h.w, Math.min(8, h.h * 0.25));
+          for (let i = 0; i < Math.floor(h.w / 25); i++) {
+            const phase = t + i * 0.7;
+            const bx = left + (i + 0.5) * (h.w / Math.floor(h.w / 25));
+            const bobY = top + 4 + (Math.sin(phase) * 2);
+            g.fillStyle(0xffcc00);
+            g.fillCircle(bx, bobY, 2 + (Math.sin(phase * 1.3) + 1));
+          }
         }
       });
     }
