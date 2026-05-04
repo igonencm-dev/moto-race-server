@@ -1631,9 +1631,10 @@
       // Boutons
       this.makeButton(w/2, h/2 + 20, 'SOLO', () => this.scene.start('GameSetup'));
       this.makeButton(w/2, h/2 + 75, '🌍 SALON EN LIGNE', () => this.scene.start('ServerRoom'));
-      this.makeButton(w/2, h/2 + 130, '🏆 CLASSEMENT', () => this.scene.start('Leaderboard'));
-      this.makeButton(w/2, h/2 + 185, 'MULTI 1V1 (P2P)', () => this.scene.start('Multi'));
-      this.makeButton(w/2, h/2 + 240, 'COMMANDES', () => this.scene.start('Help'));
+      this.makeButton(w/2, h/2 + 130, '🤝 SALON PRIVÉ (N joueurs)', () => this.scene.start('PrivateRoom'));
+      this.makeButton(w/2, h/2 + 185, '🏆 CLASSEMENT', () => this.scene.start('Leaderboard'));
+      this.makeButton(w/2, h/2 + 240, 'MULTI 1V1 (P2P)', () => this.scene.start('Multi'));
+      this.makeButton(w/2, h/2 + 295, 'COMMANDES', () => this.scene.start('Help'));
 
       this.add.text(w/2, h - 30, 'fait avec Phaser 3 + Matter.js + WebRTC', {
         font: '11px sans-serif',
@@ -2743,6 +2744,511 @@
   }
 
   // ===========================================================
+  // SALON PRIVÉ — création / rejoindre / lobby (N joueurs)
+  // ===========================================================
+  class PrivateRoomScene extends Phaser.Scene {
+    constructor() { super('PrivateRoom'); }
+
+    create() {
+      this.state = 'entry';            // 'entry' / 'createConfig' / 'joining' / 'lobby'
+      this.selectedMaps = [];
+      this.duration = 180;             // secondes
+      this.currentTier = 1;
+      this.lobbyPlayers = [];          // [{ id, pseudo, isHost }]
+      this.isHost = false;
+      this.roomCode = null;
+      this.serverListeners = {};
+
+      if (!Player.getName()) {
+        showPseudoOverlay(() => this.renderEntry());
+      } else {
+        this.renderEntry();
+      }
+    }
+
+    clear() {
+      this.children.removeAll();
+    }
+
+    drawHeader(title, subtitle) {
+      const w = this.scale.width;
+      this.cameras.main.setBackgroundColor('#1a2030');
+      this.add.text(w / 2, 60, title, {
+        font: 'bold 38px sans-serif',
+        color: '#ff5533', stroke: '#000', strokeThickness: 4
+      }).setOrigin(0.5);
+      if (subtitle) {
+        this.add.text(w / 2, 100, subtitle, {
+          font: '14px sans-serif', color: '#aaa'
+        }).setOrigin(0.5);
+      }
+      // Bouton retour
+      const back = this.add.text(20, 20, '← Menu', {
+        font: 'bold 14px sans-serif', color: '#aaa',
+        backgroundColor: '#333', padding: { x: 14, y: 8 }
+      }).setInteractive({ useHandCursor: true });
+      back.on('pointerdown', () => {
+        this.cleanupServerListeners();
+        ServerConn.disconnect();
+        this.scene.start('Menu');
+      });
+      // Pseudo
+      const pseudo = Player.getName();
+      if (pseudo) {
+        this.add.text(w - 20, 24, '👤 ' + pseudo, {
+          font: 'bold 14px sans-serif', color: '#ffdd44',
+          backgroundColor: '#222a3a', padding: { x: 12, y: 6 }
+        }).setOrigin(1, 0);
+      }
+    }
+
+    // ============== ENTRY : Créer ou Rejoindre ==============
+    renderEntry() {
+      this.clear();
+      this.state = 'entry';
+      this.drawHeader('🤝  SALON PRIVÉ', 'Joue avec plusieurs potes (jusqu\'à 8) — tour à tour sur les maps que TU choisis');
+      const w = this.scale.width;
+      const h = this.scale.height;
+
+      const btnCreate = this.add.text(w / 2, h / 2 - 30, '➕  CRÉER UN SALON', {
+        font: 'bold 22px sans-serif', color: '#fff',
+        backgroundColor: '#ff5533', padding: { x: 30, y: 16 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      btnCreate.on('pointerdown', () => this.renderCreateConfig());
+
+      const btnJoin = this.add.text(w / 2, h / 2 + 40, '🔗  REJOINDRE AVEC UN CODE', {
+        font: 'bold 18px sans-serif', color: '#fff',
+        backgroundColor: '#3366aa', padding: { x: 26, y: 14 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      btnJoin.on('pointerdown', () => this.promptJoinCode());
+
+      this.add.text(w / 2, h / 2 + 110, 'Le créateur configure les maps et la durée. Le code à 4 lettres est partagé\navec les potes pour qu\'ils rejoignent.', {
+        font: '12px sans-serif', color: '#888', align: 'center'
+      }).setOrigin(0.5);
+    }
+
+    promptJoinCode() {
+      const overlay = document.getElementById('peerOverlay');
+      overlay.style.display = 'block';
+      overlay.innerHTML = `
+        <h2>Rejoindre un salon</h2>
+        <p>Entre le code à 4 lettres communiqué par le créateur du salon.</p>
+        <input type="text" id="codeInput" maxlength="4" placeholder="XXXX" style="text-transform:uppercase;font-size:24px;letter-spacing:8px;text-align:center" />
+        <div id="codeError" style="color:#ff6655;font-size:12px;margin-top:6px;display:none"></div>
+        <div style="margin-top:8px">
+          <button id="codeOk">Rejoindre</button>
+          <button class="secondary" id="codeCancel">Annuler</button>
+        </div>
+      `;
+      const input = document.getElementById('codeInput');
+      input.focus();
+      const errorEl = document.getElementById('codeError');
+      const showError = (txt) => { errorEl.textContent = txt; errorEl.style.display = 'block'; };
+      const submit = () => {
+        const code = input.value.trim().toUpperCase().slice(0, 4);
+        if (code.length !== 4) { showError('Le code doit faire 4 lettres'); return; }
+        overlay.style.display = 'none';
+        this.tryJoinRoom(code);
+      };
+      document.getElementById('codeOk').onclick = submit;
+      document.getElementById('codeCancel').onclick = () => { overlay.style.display = 'none'; };
+      input.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
+    }
+
+    tryJoinRoom(code) {
+      this.clear();
+      this.drawHeader('🤝  SALON PRIVÉ', 'connexion en cours...');
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.add.text(w / 2, h / 2, `Rejoindre ${code}...`, {
+        font: 'bold 20px sans-serif', color: '#fff'
+      }).setOrigin(0.5);
+
+      const pseudo = Player.getName() || 'anonyme';
+      ServerConn.connect(pseudo, 'main')
+        .catch(() => null) // ignore l'auto-join sur main
+        .finally(() => {
+          // En réalité on ouvre une connexion brute pour envoyer joinRoom au lieu de join
+          // Plus simple : on (re)connecte directement avec un message custom
+          this.openCustomConnection(() => {
+            ServerConn.send({ type: 'joinRoom', code, pseudo });
+          });
+        });
+
+      this.attachServerListeners();
+    }
+
+    // Ouvre/réouvre une connexion mais sans envoyer 'join' automatique
+    openCustomConnection(onOpen) {
+      // Si déjà connecté, on déconnecte d'abord pour éviter le auto-join
+      if (ServerConn.connected) ServerConn.disconnect();
+      try {
+        ServerConn.ws = new WebSocket(ServerConn.getUrl());
+      } catch (e) {
+        this.showJoinError('serveur inaccessible');
+        return;
+      }
+      ServerConn.ws.onopen = () => {
+        ServerConn.connected = true;
+        onOpen();
+      };
+      ServerConn.ws.onmessage = (evt) => {
+        let m;
+        try { m = JSON.parse(evt.data); } catch (e) { return; }
+        if (m.type === 'roomCreated' || m.type === 'roomJoined') {
+          ServerConn.myId = m.myId;
+        }
+        ServerConn.emit(m.type, m);
+      };
+      ServerConn.ws.onclose = () => { ServerConn.connected = false; ServerConn.emit('close'); };
+      ServerConn.ws.onerror = (err) => { ServerConn.emit('error', err); };
+    }
+
+    showJoinError(message) {
+      this.clear();
+      this.drawHeader('🤝  SALON PRIVÉ', '');
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.add.text(w / 2, h / 2 - 20, '❌  ' + message, {
+        font: 'bold 22px sans-serif', color: '#ff6655'
+      }).setOrigin(0.5);
+      const btn = this.add.text(w / 2, h / 2 + 40, 'Retour', {
+        font: 'bold 16px sans-serif', color: '#fff',
+        backgroundColor: '#ff5533', padding: { x: 22, y: 10 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      btn.on('pointerdown', () => this.renderEntry());
+    }
+
+    // ============== CREATE CONFIG : choix maps + durée ==============
+    renderCreateConfig() {
+      this.clear();
+      this.state = 'createConfig';
+      this.drawHeader('CONFIGURATION DU SALON', 'Choisis 1 à 5 maps + la durée par map');
+      const w = this.scale.width;
+      const h = this.scale.height;
+
+      // Tabs niveau 1/2
+      this.tierTabs = [];
+      const tiers = [1, 2];
+      tiers.forEach((tier, idx) => {
+        const x = w / 2 + (idx - 0.5) * 160;
+        const tab = this.add.text(x, 130, `🏆  NIVEAU ${tier}`, {
+          font: 'bold 14px sans-serif', color: '#ccc',
+          backgroundColor: '#222a3a', padding: { x: 18, y: 8 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        tab.on('pointerdown', () => { this.currentTier = tier; this.refreshConfigUI(); });
+        this.tierTabs.push({ btn: tab, tier });
+      });
+
+      // Durée
+      this.add.text(w / 2, 170, 'DURÉE PAR MAP', {
+        font: 'bold 11px sans-serif', color: '#ffaa66'
+      }).setOrigin(0.5);
+      this.durationButtons = [];
+      [
+        { label: '1 min', val: 60 },
+        { label: '3 min', val: 180 },
+        { label: '5 min', val: 300 }
+      ].forEach((opt, idx) => {
+        const x = w / 2 + (idx - 1) * 100;
+        const btn = this.add.text(x, 196, opt.label, {
+          font: 'bold 14px sans-serif', color: '#aaa',
+          backgroundColor: '#222a3a', padding: { x: 16, y: 6 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        btn.on('pointerdown', () => { this.duration = opt.val; this.refreshConfigUI(); });
+        this.durationButtons.push({ btn, val: opt.val });
+      });
+
+      this.counterText = this.add.text(w / 2, 228, '0 / 5 maps sélectionnées', {
+        font: 'bold 12px sans-serif', color: '#aaa'
+      }).setOrigin(0.5);
+
+      // Grille de maps
+      this.cardsContainer = this.add.container(0, 0);
+      this.refreshConfigUI();
+
+      // Bouton créer
+      this.createBtn = this.add.text(w / 2, h - 50, 'CRÉER LE SALON', {
+        font: 'bold 18px sans-serif', color: '#fff',
+        backgroundColor: '#666', padding: { x: 30, y: 12 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      this.createBtn.on('pointerdown', () => {
+        if (!this.selectedMaps.length) return;
+        this.tryCreateRoom();
+      });
+
+      this.refreshConfigUI();
+    }
+
+    refreshConfigUI() {
+      // Tabs
+      if (this.tierTabs) {
+        this.tierTabs.forEach(t => {
+          t.btn.setStyle({
+            color: t.tier === this.currentTier ? '#ffdd44' : '#ccc',
+            backgroundColor: t.tier === this.currentTier ? '#3a2a1a' : '#222a3a'
+          });
+        });
+      }
+      // Duration
+      if (this.durationButtons) {
+        this.durationButtons.forEach(d => {
+          d.btn.setStyle({
+            color: d.val === this.duration ? '#000' : '#aaa',
+            backgroundColor: d.val === this.duration ? '#ffdd44' : '#222a3a'
+          });
+        });
+      }
+      // Compteur
+      if (this.counterText) {
+        this.counterText.setText(`${this.selectedMaps.length} / 5 maps sélectionnées`);
+      }
+      // Bouton créer
+      if (this.createBtn) {
+        const enabled = this.selectedMaps.length > 0;
+        this.createBtn.setStyle({
+          backgroundColor: enabled ? '#ff5533' : '#666',
+          color: '#fff'
+        });
+      }
+      // Grille
+      this.renderConfigGrid();
+    }
+
+    renderConfigGrid() {
+      if (!this.cardsContainer) return;
+      this.cardsContainer.removeAll(true);
+      const w = this.scale.width;
+      const startY = 270;
+      const cardW = 130, cardH = 78;
+      const gap = 12;
+      const cols = Math.min(5, Math.max(3, Math.floor((w - 60) / (cardW + gap))));
+      const filtered = LEVELS.map((l, i) => ({ l, i })).filter(x => (x.l.tier || 1) === this.currentTier);
+      filtered.forEach((x, idx) => {
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        const cx = w / 2 + (col - (cols - 1) / 2) * (cardW + gap);
+        const cy = startY + row * (cardH + gap);
+        const isSelected = this.selectedMaps.includes(x.i);
+        const card = this.add.rectangle(cx, cy, cardW, cardH, isSelected ? 0xff5533 : 0x222a3a)
+          .setStrokeStyle(2, isSelected ? 0xffdd44 : 0x444444)
+          .setInteractive({ useHandCursor: true });
+        const num = isSelected ? `#${this.selectedMaps.indexOf(x.i) + 1}` : '';
+        const label = this.add.text(cx, cy - 18, num + ' ' + x.l.name, {
+          font: 'bold 11px sans-serif', color: '#fff', wordWrap: { width: cardW - 8 }, align: 'center'
+        }).setOrigin(0.5);
+        const tier = this.add.text(cx, cy + 16, `T${x.l.tier || 1}`, {
+          font: '10px sans-serif', color: '#aaa'
+        }).setOrigin(0.5);
+        card.on('pointerdown', () => {
+          if (isSelected) {
+            this.selectedMaps = this.selectedMaps.filter(idx2 => idx2 !== x.i);
+          } else if (this.selectedMaps.length < 5) {
+            this.selectedMaps.push(x.i);
+          }
+          this.refreshConfigUI();
+        });
+        this.cardsContainer.add([card, label, tier]);
+      });
+    }
+
+    tryCreateRoom() {
+      this.clear();
+      this.drawHeader('🤝  SALON PRIVÉ', 'création du salon...');
+      const w = this.scale.width;
+      const h = this.scale.height;
+      this.add.text(w / 2, h / 2, 'Création...', {
+        font: 'bold 20px sans-serif', color: '#fff'
+      }).setOrigin(0.5);
+
+      const pseudo = Player.getName() || 'anonyme';
+      this.openCustomConnection(() => {
+        ServerConn.send({
+          type: 'createRoom',
+          pseudo,
+          mapSequence: this.selectedMaps.slice(),
+          durationPerMap: this.duration
+        });
+      });
+      this.attachServerListeners();
+    }
+
+    // ============== LOBBY ==============
+    renderLobby() {
+      this.clear();
+      this.state = 'lobby';
+      this.drawHeader('🤝  LOBBY  ' + (this.roomCode ? this.roomCode : ''), 'Partage le code avec tes potes pour qu\'ils rejoignent');
+      const w = this.scale.width;
+      const h = this.scale.height;
+
+      // Code en gros
+      this.add.text(w / 2, 165, 'CODE :', {
+        font: 'bold 12px sans-serif', color: '#aaa'
+      }).setOrigin(0.5);
+      this.add.text(w / 2, 200, this.roomCode || '----', {
+        font: 'bold 56px monospace', color: '#ffdd44',
+        backgroundColor: '#222a3a', padding: { x: 24, y: 8 },
+        stroke: '#000', strokeThickness: 3
+      }).setOrigin(0.5);
+      // Bouton copier
+      const copy = this.add.text(w / 2, 250, '📋  Copier le code', {
+        font: 'bold 12px sans-serif', color: '#aaa',
+        backgroundColor: '#333', padding: { x: 12, y: 6 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      copy.on('pointerdown', () => {
+        if (this.roomCode) {
+          navigator.clipboard.writeText(this.roomCode).catch(() => {});
+          copy.setText('✓  Copié !');
+          this.time.delayedCall(1500, () => copy.setText('📋  Copier le code'));
+        }
+      });
+
+      // Maps choisies (récap)
+      const recapY = 285;
+      this.add.text(w / 2, recapY, 'BO de ' + (this.lobbyMapSequence ? this.lobbyMapSequence.length : '?') + ' map(s)  ·  ' + (this.lobbyDuration || '?') + 's par map', {
+        font: 'bold 12px sans-serif', color: '#ffaa66'
+      }).setOrigin(0.5);
+      if (this.lobbyMapSequence) {
+        const seqStr = this.lobbyMapSequence.map((idx, i) => `${i + 1}. ${LEVELS[idx].name}`).join('  ·  ');
+        this.add.text(w / 2, recapY + 22, seqStr, {
+          font: '11px sans-serif', color: '#aaa', wordWrap: { width: w - 60 }, align: 'center'
+        }).setOrigin(0.5);
+      }
+
+      // Liste joueurs
+      this.lobbyPlayersGroup = this.add.group();
+      this.refreshLobbyPlayers();
+
+      // Bouton "Lancer" pour le host, "En attente" pour les autres
+      this.lobbyActionY = h - 80;
+      this.refreshLobbyAction();
+    }
+
+    refreshLobbyPlayers() {
+      if (this.lobbyPlayersGroup) this.lobbyPlayersGroup.clear(true, true);
+      const w = this.scale.width;
+      const startY = 360;
+      this.add.text(w / 2, startY, `JOUEURS  (${this.lobbyPlayers.length})`, {
+        font: 'bold 12px sans-serif', color: '#ffaa66'
+      }).setOrigin(0.5).setName('lobbyPlayersHeader');
+      this.lobbyPlayers.forEach((p, i) => {
+        const row = i;
+        const isMe = p.id === ServerConn.myId;
+        const txt = `${p.isHost ? '👑 ' : ''}${p.pseudo}${isMe ? ' (toi)' : ''}`;
+        const t = this.add.text(w / 2, startY + 30 + row * 26, txt, {
+          font: 'bold 16px sans-serif',
+          color: isMe ? '#ffdd44' : '#fff'
+        }).setOrigin(0.5);
+        this.lobbyPlayersGroup.add(t);
+      });
+    }
+
+    refreshLobbyAction() {
+      if (this.lobbyActionBtn) { this.lobbyActionBtn.destroy(); this.lobbyActionBtn = null; }
+      if (this.lobbyActionLabel) { this.lobbyActionLabel.destroy(); this.lobbyActionLabel = null; }
+      const w = this.scale.width;
+      if (this.isHost) {
+        const enabled = this.lobbyPlayers.length >= 1;
+        this.lobbyActionBtn = this.add.text(w / 2, this.lobbyActionY, '🏁  LANCER LE BO', {
+          font: 'bold 22px sans-serif', color: '#fff',
+          backgroundColor: enabled ? '#44aa44' : '#666',
+          padding: { x: 30, y: 14 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        this.lobbyActionBtn.on('pointerdown', () => {
+          if (this.lobbyPlayers.length >= 1) {
+            ServerConn.send({ type: 'startBO' });
+          }
+        });
+      } else {
+        this.lobbyActionLabel = this.add.text(w / 2, this.lobbyActionY, '⏳  En attente du host pour lancer la course...', {
+          font: 'bold 16px sans-serif', color: '#aaa'
+        }).setOrigin(0.5);
+      }
+    }
+
+    // ============== ÉCOUTE DES MESSAGES SERVEUR ==============
+    attachServerListeners() {
+      this.cleanupServerListeners();
+      const reg = (event, fn) => {
+        ServerConn.on(event, fn);
+        this.serverListeners[event] = fn;
+      };
+      reg('roomCreated', (m) => {
+        this.roomCode = m.code;
+        this.isHost = true;
+        this.lobbyMapSequence = m.mapSequence;
+        this.lobbyDuration = m.durationPerMap;
+        this.lobbyPlayers = (m.players || []).slice();
+        this.renderLobby();
+      });
+      reg('roomJoined', (m) => {
+        this.roomCode = m.code;
+        this.isHost = (m.myId === m.hostId);
+        this.lobbyMapSequence = m.mapSequence;
+        this.lobbyDuration = m.durationPerMap;
+        this.lobbyPlayers = (m.players || []).slice();
+        this.renderLobby();
+      });
+      reg('lobbyPlayerJoined', (m) => {
+        if (this.state !== 'lobby') return;
+        this.lobbyPlayers.push({ id: m.id, pseudo: m.pseudo, isHost: m.isHost });
+        this.refreshLobbyPlayers();
+        this.refreshLobbyAction();
+      });
+      reg('playerLeft', (m) => {
+        this.lobbyPlayers = this.lobbyPlayers.filter(p => p.id !== m.id);
+        if (this.state === 'lobby') {
+          this.refreshLobbyPlayers();
+          this.refreshLobbyAction();
+        }
+      });
+      reg('hostChanged', (m) => {
+        this.lobbyPlayers.forEach(p => p.isHost = (p.id === m.newHostId));
+        this.isHost = (m.newHostId === ServerConn.myId);
+        if (this.state === 'lobby') {
+          this.refreshLobbyPlayers();
+          this.refreshLobbyAction();
+        }
+      });
+      reg('error', (m) => {
+        const errMap = {
+          'salon_introuvable': 'salon introuvable (code invalide)',
+          'partie_en_cours': 'le BO est déjà lancé dans ce salon',
+          'salon_plein': 'salon plein (max 8)',
+          'config_invalide': 'configuration invalide'
+        };
+        const msg = (m && m.error && errMap[m.error]) || 'erreur serveur';
+        this.showJoinError(msg);
+      });
+      reg('privateBOStart', (m) => {
+        // Démarrage du BO : on transitionne vers GameScene en mode private-server
+        this.cleanupServerListeners();
+        this.scene.start('Game', {
+          level: m.currentMapIdx,
+          mode: 'private-server',
+          mapSequence: m.mapSequence,
+          durationPerMap: m.durationPerMap,
+          currentMapIdx: 0,
+          privateMapIdx: m.currentMapIdx,
+          privateMapStartedAt: m.mapStartedAt,
+          privateMapDuration: m.mapDuration,
+          existingPlayers: this.lobbyPlayers.filter(p => p.id !== ServerConn.myId).map(p => ({
+            id: p.id, pseudo: p.pseudo, sessionBest: null
+          })),
+          results: []
+        });
+      });
+    }
+
+    cleanupServerListeners() {
+      Object.entries(this.serverListeners || {}).forEach(([event, fn]) => {
+        try { ServerConn.off(event, fn); } catch (e) {}
+      });
+      this.serverListeners = {};
+    }
+  }
+
+  // ===========================================================
   // SCÈNE JEU (la course)
   // ===========================================================
   class GameScene extends Phaser.Scene {
@@ -2776,6 +3282,12 @@
         mapDuration: data.mapDuration || 5 * 60 * 1000,
         inTransition: data.inTransition || false,
         transitionEndsAt: data.transitionEndsAt || null,
+        existingPlayers: data.existingPlayers || []
+      } : null;
+      // Mode PRIVATE-SERVER : BO multi N joueurs piloté par le host
+      this.privateState = (data.mode === 'private-server') ? {
+        mapStartedAt: data.privateMapStartedAt || Date.now(),
+        mapDuration: data.privateMapDuration || (data.durationPerMap || 180) * 1000,
         existingPlayers: data.existingPlayers || []
       } : null;
     }
@@ -2845,13 +3357,13 @@
         this.opponentFinishTime = null;
       }
 
-      // Mode SERVEUR : plusieurs ghosts (un par joueur connecté)
-      if (this.mode === 'server') {
-        this.ghosts = new Map(); // id → { x, y, a, wba, wfa, pseudo, sessionBest, finished, crashed }
+      // Mode SERVEUR (public) ou PRIVATE-SERVER : plusieurs ghosts (un par joueur connecté)
+      if (this.mode === 'server' || this.mode === 'private-server') {
+        this.ghosts = new Map();
         this.ghostsGfx = this.add.graphics();
-        // Initialise avec la liste des joueurs déjà présents
-        if (this.serverState && this.serverState.existingPlayers) {
-          for (const p of this.serverState.existingPlayers) {
+        const state = this.mode === 'server' ? this.serverState : this.privateState;
+        if (state && state.existingPlayers) {
+          for (const p of state.existingPlayers) {
             this.ghosts.set(p.id, {
               x: startX, y: startY, a: 0, wba: 0, wfa: 0,
               pseudo: p.pseudo, sessionBest: p.sessionBest,
@@ -2909,13 +3421,17 @@
       this.lastRecordTime = 0;
       this.RECORD_INTERVAL_MS = 50;        // 20 fps suffisent pour un replay fluide
 
-      // === MODE CHALLENGE (solo + multi P2P + serveur) ===
-      this.challengeMode = this.mode === 'solo' || this.mode === 'multi-host' || this.mode === 'multi-join' || this.mode === 'server';
-      this.CHALLENGE_DURATION = this.durationPerMap; // 60 / 180 / 300 sec selon config
+      // === MODE CHALLENGE (solo + multi P2P + serveur public + serveur privé) ===
+      this.challengeMode = this.mode === 'solo' || this.mode === 'multi-host' || this.mode === 'multi-join' || this.mode === 'server' || this.mode === 'private-server';
+      this.CHALLENGE_DURATION = this.durationPerMap;
 
-      // Mode serveur : durée vient du serveur
+      // Mode serveur public : durée vient du serveur
       if (this.mode === 'server' && this.serverState) {
         this.CHALLENGE_DURATION = this.serverState.mapDuration / 1000;
+      }
+      // Mode private-server : durée vient du config BO du host
+      if (this.mode === 'private-server' && this.privateState) {
+        this.CHALLENGE_DURATION = this.privateState.mapDuration / 1000;
       }
       this.challengeEnded = false;
 
@@ -2925,9 +3441,15 @@
         this.challengeEndTime = this.time.now + offset;
       }
 
-      // Mode serveur : timer basé sur l'état envoyé par le serveur
+      // Mode serveur public : timer basé sur l'état envoyé par le serveur
       if (this.mode === 'server' && this.serverState && this.challengeEndTime === null) {
         const remainingMs = (this.serverState.mapStartedAt + this.serverState.mapDuration) - Date.now();
+        this.challengeEndTime = this.time.now + remainingMs;
+      }
+
+      // Mode private-server : timer basé sur le mapStartedAt envoyé par le serveur
+      if (this.mode === 'private-server' && this.privateState && this.challengeEndTime === null) {
+        const remainingMs = (this.privateState.mapStartedAt + this.privateState.mapDuration) - Date.now();
         this.challengeEndTime = this.time.now + remainingMs;
       }
 
@@ -3094,8 +3616,9 @@
         this.conn.on('data', this.peerListener);
       }
 
-      // Réception events serveur (mode salon)
-      if (this.mode === 'server') {
+      // Réception events serveur (mode salon public ou privé)
+      if (this.mode === 'server' || this.mode === 'private-server') {
+        const isPrivate = this.mode === 'private-server';
         this.serverHandlers = {
           pos: (msg) => {
             let g = this.ghosts.get(msg.id);
@@ -3110,6 +3633,13 @@
             }
           },
           playerJoined: (msg) => {
+            this.ghosts.set(msg.id, {
+              x: 100, y: 340, a: 0, wba: 0, wfa: 0,
+              pseudo: msg.pseudo, sessionBest: null, finished: false, crashed: false
+            });
+            this.showFloatingText(msg.pseudo + ' rejoint le salon', '#66ccff');
+          },
+          lobbyPlayerJoined: (msg) => {
             this.ghosts.set(msg.id, {
               x: 100, y: 340, a: 0, wba: 0, wfa: 0,
               pseudo: msg.pseudo, sessionBest: null, finished: false, crashed: false
@@ -3132,15 +3662,15 @@
             if (g) g.pseudo = msg.pseudo;
           },
           mapEnd: (msg) => {
-            // Le serveur annonce la fin de la map → on affiche le top 5 + countdown + vote
+            if (isPrivate) return;
             this.serverMapEnd(msg);
           },
           nextMapChosen: (msg) => {
-            // Quelqu'un a voté pour la prochaine map → mise à jour de l'overlay
+            if (isPrivate) return;
             this.handleNextMapChosen(msg);
           },
           mapStart: (msg) => {
-            // Nouvelle map du serveur → on relance GameScene avec la nouvelle map
+            if (isPrivate) return;
             this.scene.restart({
               level: msg.currentMapIdx,
               mode: 'server',
@@ -3153,6 +3683,50 @@
                 id: 'unknown', pseudo: g.pseudo, sessionBest: null
               }))
             });
+          },
+          // === Events spécifiques au salon privé ===
+          privateMapEnd: (msg) => {
+            if (!isPrivate) return;
+            // Fin de la map : envoie son meilleur replay puis affiche le scoreboard
+            if (this.bestRunReplay) {
+              ServerConn.send({ type: 'replayShare', replay: this.bestRunReplay });
+            }
+            this.privateMapEndOverlay(msg);
+          },
+          privateMapStart: (msg) => {
+            if (!isPrivate) return;
+            // Nouvelle map → on relance GameScene avec la nouvelle map
+            this.scene.restart({
+              level: msg.currentMapIdx,
+              mode: 'private-server',
+              mapSequence: this.mapSequence,
+              durationPerMap: this.durationPerMap,
+              currentMapIdx: msg.seqIdx,
+              privateMapIdx: msg.currentMapIdx,
+              privateMapStartedAt: msg.mapStartedAt,
+              privateMapDuration: msg.mapDuration,
+              existingPlayers: Array.from(this.ghosts.entries()).map(([id, g]) => ({
+                id, pseudo: g.pseudo, sessionBest: null
+              })),
+              results: this.results
+            });
+          },
+          privateBOEnd: (msg) => {
+            if (!isPrivate) return;
+            // Fin du BO complet : on affiche le récap final
+            this.scene.pause();
+            this.scene.launch('PrivateBOEnd', {
+              bestPerMap: msg.bestPerMap,
+              myId: ServerConn.myId,
+              myPseudo: Player.getName() || '?',
+              players: Array.from(this.ghosts.entries()).map(([id, g]) => ({ id, pseudo: g.pseudo }))
+            });
+          },
+          replayBroadcast: (msg) => {
+            if (!isPrivate) return;
+            // Stocke le replay reçu d'un autre joueur (utilisé pour scoreboard map)
+            if (!this._replays) this._replays = new Map();
+            this._replays.set(msg.playerId, { replay: msg.replay, pseudo: msg.pseudo });
           },
           close: () => {
             this.showFloatingText('Connexion serveur perdue', '#ff4444');
@@ -3193,6 +3767,11 @@
             ServerConn.off(evt, fn);
           }
           this.serverHandlers = null;
+        }
+        // Cleanup countdown interval (mode private-server)
+        if (this.privateCountdownInterval) {
+          clearInterval(this.privateCountdownInterval);
+          this.privateCountdownInterval = null;
         }
       });
     }
@@ -4048,8 +4627,9 @@
         }
       }
 
-      // === REPLAY : enregistrement des frames pendant la run (multi P2P) ===
-      if (this.conn && this.startTime !== null && !this.finished && !this.crashed) {
+      // === REPLAY : enregistrement des frames (multi P2P + salon privé) ===
+      const isMultiCtx = this.conn || this.mode === 'private-server';
+      if (isMultiCtx && this.startTime !== null && !this.finished && !this.crashed) {
         if (time - this.lastRecordTime >= this.RECORD_INTERVAL_MS) {
           this.recordingFrames.push({
             t: time - this.startTime,
@@ -4063,8 +4643,8 @@
         }
       }
 
-      // === Sync mode serveur ===
-      if (this.mode === 'server' && ServerConn.connected) {
+      // === Sync mode serveur (public ou privé) ===
+      if ((this.mode === 'server' || this.mode === 'private-server') && ServerConn.connected) {
         if (!this._lastSent || time - this._lastSent > 33) {
           ServerConn.send({
             type: 'pos',
@@ -4486,6 +5066,150 @@
       }
     }
 
+    // Overlay de fin de map en mode salon privé : scoreboard + replay du gagnant
+    privateMapEndOverlay(msg) {
+      if (this.serverEndOverlay) return;
+      this.challengeEnded = true;
+      const w = this.scale.width;
+      const h = this.scale.height;
+      const isLastMap = !!msg.isLastMap;
+
+      // Sauvegarde le résultat de cette map (ajout à results pour le récap final)
+      const myScoreLine = (msg.scores || []).find(s => s.id === ServerConn.myId);
+      this.results = (this.results || []).concat([{
+        seqIdx: msg.seqIdx,
+        mapIdx: msg.mapIdx,
+        scores: msg.scores || [],
+        myTime: myScoreLine ? myScoreLine.time : null
+      }]);
+
+      this.serverEndOverlay = this.add.container(0, 0).setScrollFactor(0);
+      const bg = this.add.rectangle(0, 0, w, h, 0x000000, 0.78).setOrigin(0);
+      this.serverEndOverlay.add(bg);
+
+      const title = this.add.text(w / 2, 80, isLastMap ? 'DERNIÈRE MAP TERMINÉE' : `MAP ${msg.seqIdx + 1} TERMINÉE`, {
+        font: 'bold 36px sans-serif', color: '#ffdd44',
+        stroke: '#000', strokeThickness: 5
+      }).setOrigin(0.5);
+      this.serverEndOverlay.add(title);
+
+      this.add.text(w / 2, 120, LEVELS[msg.mapIdx].name, {
+        font: '15px sans-serif', color: '#aaa'
+      }).setOrigin(0.5).setScrollFactor(0);
+
+      // Top scores
+      this.add.text(w / 2, 160, '🏆  TOP  🏆', {
+        font: 'bold 14px sans-serif', color: '#ffdd44'
+      }).setOrigin(0.5).setScrollFactor(0);
+      const myId = ServerConn.myId;
+      const medals = ['🥇', '🥈', '🥉', '4.', '5.', '6.', '7.', '8.'];
+      (msg.scores || []).slice(0, 8).forEach((s, i) => {
+        const isMe = s.id === myId;
+        const line = `${medals[i] || (i + 1) + '.'}  ${s.pseudo}${isMe ? ' (toi)' : ''}  —  ${s.time.toFixed(2)}s`;
+        const t = this.add.text(w / 2, 195 + i * 26, line, {
+          font: 'bold 15px monospace',
+          color: isMe ? '#ffdd44' : (i === 0 ? '#ffdd44' : '#fff')
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.serverEndOverlay.add(t);
+      });
+      if (!msg.scores || msg.scores.length === 0) {
+        const t = this.add.text(w / 2, 200, 'aucun joueur n\'a fini', {
+          font: 'bold 16px sans-serif', color: '#ff8866'
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.serverEndOverlay.add(t);
+      }
+
+      // Aperçu map suivante (si pas la dernière)
+      if (!isLastMap) {
+        const nextSeq = msg.seqIdx + 1;
+        const nextMapIdx = this.mapSequence[nextSeq];
+        if (nextMapIdx !== undefined) {
+          this.add.text(w / 2 + 170, h / 2 + 20, '➡  MAP SUIVANTE', {
+            font: 'bold 11px sans-serif', color: '#ffaa66'
+          }).setOrigin(0.5).setScrollFactor(0);
+          this.drawMapPreviewMini(w / 2 + 170, h / 2 + 70, nextMapIdx, 220, 80);
+          this.add.text(w / 2 + 170, h / 2 + 120, LEVELS[nextMapIdx].name, {
+            font: 'bold 12px sans-serif', color: '#fff'
+          }).setOrigin(0.5).setScrollFactor(0);
+        }
+      }
+
+      // Bouton replay du gagnant (attend ~500ms que le replay du gagnant arrive du serveur)
+      this.time.delayedCall(800, () => {
+        const winner = (msg.scores || [])[0];
+        if (!winner) return;
+        // 2 cas : moi je suis le gagnant (j'ai mon bestRunReplay) OU c'est un autre joueur (j'ai reçu son replay)
+        let winnerReplay = null;
+        if (winner.id === myId && this.bestRunReplay) {
+          winnerReplay = this.bestRunReplay;
+        } else if (this._replays && this._replays.has(winner.id)) {
+          winnerReplay = this._replays.get(winner.id).replay;
+        }
+        if (winnerReplay) {
+          const btn = this.add.text(w / 2 - 170, h / 2 + 70, '▶  Replay vainqueur', {
+            font: 'bold 14px sans-serif', color: '#fff',
+            backgroundColor: '#44aa44', padding: { x: 16, y: 8 }
+          }).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
+          btn.on('pointerdown', () => {
+            this.scene.start('Replay', {
+              replay: winnerReplay,
+              level: msg.mapIdx,
+              returnTo: 'Menu'
+            });
+          });
+          this.serverEndOverlay.add(btn);
+        }
+      });
+
+      // Décompte avant la prochaine map (ou fin de BO)
+      const countdownText = this.add.text(w / 2, h - 60, '', {
+        font: 'bold 20px sans-serif', color: '#ffdd44'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.serverEndOverlay.add(countdownText);
+      const updateCountdown = () => {
+        if (!this.serverEndOverlay) return;
+        const remaining = Math.max(0, (msg.nextAt - Date.now()) / 1000);
+        countdownText.setText(isLastMap
+          ? `Récap final dans ${remaining.toFixed(1)}s`
+          : `Map suivante dans ${remaining.toFixed(1)}s`);
+      };
+      updateCountdown();
+      this.privateCountdownInterval = setInterval(updateCountdown, 200);
+    }
+
+    drawMapPreviewMini(cx, cy, levelIdx, w, h) {
+      const lvl = LEVELS[levelIdx];
+      if (!lvl || !lvl.terrain) return;
+      const g = this.add.graphics().setScrollFactor(0);
+      const isCave = lvl.tier === 2;
+      g.fillStyle(isCave ? 0x1a0e0a : 0x87CEEB);
+      g.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, 6);
+      g.lineStyle(2, 0x444444);
+      g.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, 6);
+      const points = lvl.terrain;
+      let minX = points[0].x, maxX = points[0].x, minY = points[0].y, maxY = points[0].y;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+      }
+      if (lvl.finishX !== undefined && lvl.finishX > maxX) maxX = lvl.finishX;
+      const padX = 8, padY = 8;
+      const sx = (w - padX * 2) / Math.max(1, maxX - minX);
+      const sy = (h - padY * 2) / Math.max(1, maxY - minY + 100);
+      const sc = Math.min(sx, sy);
+      const ox = cx - w / 2 + padX, oy = cy - h / 2 + padY;
+      const tx = (px) => ox + (px - minX) * sc;
+      const ty = (py) => oy + (py - minY) * sc;
+      g.fillStyle(0x4a3a2a);
+      g.beginPath();
+      g.moveTo(tx(points[0].x), cy + h / 2 - padY);
+      g.lineTo(tx(points[0].x), ty(points[0].y));
+      points.forEach(p => g.lineTo(tx(p.x), ty(p.y)));
+      g.lineTo(tx(points[points.length - 1].x), cy + h / 2 - padY);
+      g.closePath();
+      g.fillPath();
+    }
+
     serverMapEnd(msg) {
       // Affiche un overlay avec les scores du serveur, puis attend mapStart
       if (this.serverEndOverlay) return; // déjà affiché
@@ -4697,7 +5421,7 @@
       this.cameras.main.shake(280, 0.018);
       this.cameras.main.flash(120, 255, 60, 60);
 
-      // Mode serveur : auto-restart même map (pas d'écran de fin)
+      // Mode serveur (public) : auto-restart même map (pas d'écran de fin)
       if (this.mode === 'server') {
         this.time.delayedCall(1400, () => {
           if (this.time.now < this.challengeEndTime - 500 && !this.challengeEnded) {
@@ -4712,6 +5436,32 @@
               })),
               sessionBestTime: this.sessionBestTime,
               runCount: this.runCount + 1
+            });
+          }
+        });
+        return;
+      }
+
+      // Mode private-server : auto-restart même map
+      if (this.mode === 'private-server') {
+        this.time.delayedCall(1400, () => {
+          if (this.time.now < this.challengeEndTime - 500 && !this.challengeEnded) {
+            this.scene.restart({
+              level: this.levelIndex,
+              mode: 'private-server',
+              mapSequence: this.mapSequence,
+              durationPerMap: this.durationPerMap,
+              currentMapIdx: this.currentMapIdx,
+              privateMapIdx: this.levelIndex,
+              privateMapStartedAt: this.privateState.mapStartedAt,
+              privateMapDuration: this.privateState.mapDuration,
+              existingPlayers: Array.from(this.ghosts.entries()).map(([id, g]) => ({
+                id, pseudo: g.pseudo, sessionBest: g.sessionBest
+              })),
+              sessionBestTime: this.sessionBestTime,
+              runCount: this.runCount + 1,
+              bestRunReplay: this.bestRunReplay,
+              results: this.results
             });
           }
         });
@@ -4775,8 +5525,8 @@
       // Best de la session (challenge)
       if (this.sessionBestTime === null || this.elapsed < this.sessionBestTime) {
         this.sessionBestTime = this.elapsed;
-        // Sauvegarde du replay (multi P2P uniquement)
-        if (this.conn && this.recordingFrames.length > 0) {
+        // Sauvegarde du replay (multi P2P + salon privé)
+        if ((this.conn || this.mode === 'private-server') && this.recordingFrames.length > 0) {
           this.bestRunReplay = {
             time: this.elapsed,
             frames: this.recordingFrames.slice(),
@@ -4792,7 +5542,7 @@
       if (this.conn && this.conn.open) {
         try { this.conn.send({ type: 'finished', time: this.elapsed }); } catch (e) {}
       }
-      if (this.mode === 'server' && ServerConn.connected) {
+      if ((this.mode === 'server' || this.mode === 'private-server') && ServerConn.connected) {
         ServerConn.send({ type: 'finished', time: this.elapsed });
       }
 
@@ -4803,7 +5553,7 @@
 
       this.cameras.main.flash(300, 255, 255, 100);
 
-      // Mode serveur : auto-restart même map sans transition (le serveur gère la rotation)
+      // Mode serveur (public) : auto-restart même map sans transition
       if (this.mode === 'server') {
         this.time.delayedCall(1500, () => {
           if (this.time.now < this.challengeEndTime - 500 && !this.challengeEnded) {
@@ -4821,6 +5571,32 @@
             });
           }
           // Si plus de temps, on attend le mapEnd du serveur (event handler)
+        });
+        return;
+      }
+
+      // Mode private-server : idem, le serveur pilote la fin de map
+      if (this.mode === 'private-server') {
+        this.time.delayedCall(1500, () => {
+          if (this.time.now < this.challengeEndTime - 500 && !this.challengeEnded) {
+            this.scene.restart({
+              level: this.levelIndex,
+              mode: 'private-server',
+              mapSequence: this.mapSequence,
+              durationPerMap: this.durationPerMap,
+              currentMapIdx: this.currentMapIdx,
+              privateMapIdx: this.levelIndex,
+              privateMapStartedAt: this.privateState.mapStartedAt,
+              privateMapDuration: this.privateState.mapDuration,
+              existingPlayers: Array.from(this.ghosts.entries()).map(([id, g]) => ({
+                id, pseudo: g.pseudo, sessionBest: g.sessionBest
+              })),
+              sessionBestTime: this.sessionBestTime,
+              runCount: this.runCount + 1,
+              bestRunReplay: this.bestRunReplay,
+              results: this.results
+            });
+          }
         });
         return;
       }
@@ -5111,8 +5887,37 @@
       // Score cumulé du BO
       this.renderRunningTally(w, h / 2 + 20);
 
+      // === Replay du gagnant de la map qui vient de finir ===
+      const lastResult = this.results[this.results.length - 1];
+      const lastMapWinnerReplay = this.getLastMapWinnerReplay();
+      if (lastMapWinnerReplay) {
+        this.makeButton(w / 2 - 130, h / 2 + 110, '▶  Replay vainqueur', () => {
+          // On garde le contexte BO pour pouvoir revenir à l'écran de transition
+          this.scene.stop('Game');
+          this.scene.start('Replay', {
+            replay: lastMapWinnerReplay,
+            level: lastResult.mapIndex,
+            returnTo: 'Menu',
+            peer: this.peer
+          });
+        });
+      }
+
+      // === Aperçu de la map suivante ===
+      const nextIdx = this.currentMapIdx + 1;
+      const nextLevelIdx = this.mapSequence[nextIdx];
+      if (nextLevelIdx !== undefined) {
+        this.drawMapPreview(w / 2 + 130, h / 2 + 110, nextLevelIdx, 220, 80);
+        this.add.text(w / 2 + 130, h / 2 + 60, '➡  MAP SUIVANTE', {
+          font: 'bold 11px sans-serif', color: '#ffaa66'
+        }).setOrigin(0.5).setScrollFactor(0);
+        this.add.text(w / 2 + 130, h / 2 + 158, LEVELS[nextLevelIdx].name, {
+          font: 'bold 12px sans-serif', color: '#fff'
+        }).setOrigin(0.5).setScrollFactor(0);
+      }
+
       // Bouton selon rôle
-      const yBtn = h / 2 + 150;
+      const yBtn = h / 2 + 200;
       if (this.multiMode && !isHost) {
         // Guest : attente
         this.add.text(w / 2, yBtn, '⏳  En attente du host...', {
@@ -5122,6 +5927,127 @@
         this.makeButton(w / 2, yBtn, 'Map suivante  →', () => {
           this.startNextMap();
         });
+      }
+    }
+
+    // Renvoie le replay du gagnant de la dernière map jouée (renderIntermediate)
+    getLastMapWinnerReplay() {
+      const r = this.results[this.results.length - 1];
+      if (!r) return null;
+      if (r.mySessionBest !== null && r.peerSessionBest !== null) {
+        return r.mySessionBest < r.peerSessionBest ? r.myReplay : r.peerReplay;
+      }
+      if (r.mySessionBest !== null) return r.myReplay;
+      if (r.peerSessionBest !== null) return r.peerReplay;
+      return null;
+    }
+
+    // Dessine un aperçu miniature d'une map (utilisé pour la map suivante)
+    drawMapPreview(cx, cy, levelIdx, w, h) {
+      const lvl = LEVELS[levelIdx];
+      if (!lvl || !lvl.terrain) return;
+      const g = this.add.graphics().setScrollFactor(0);
+      // Fond
+      const isCave = lvl.tier === 2;
+      g.fillStyle(isCave ? 0x1a0e0a : 0x87CEEB);
+      g.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, 6);
+      g.lineStyle(2, 0x444444);
+      g.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, 6);
+
+      // Calcul du scale
+      const points = lvl.terrain;
+      let minX = points[0].x, maxX = points[0].x, minY = points[0].y, maxY = points[0].y;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+      }
+      if (lvl.finishX !== undefined && lvl.finishX > maxX) maxX = lvl.finishX;
+      // Plafonds influencent aussi la bbox
+      if (lvl.ceilings && lvl.ceilings.length > 0 && lvl.ceilings[0].w === undefined) {
+        for (const p of lvl.ceilings) {
+          if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+        }
+      }
+      const padX = 8, padY = 8;
+      const scaleX = (w - padX * 2) / Math.max(1, maxX - minX);
+      const scaleY = (h - padY * 2) / Math.max(1, maxY - minY + 100);
+      const scale = Math.min(scaleX, scaleY);
+      const offsetX = cx - w / 2 + padX;
+      const offsetY = cy - h / 2 + padY;
+      const tx = (px) => offsetX + (px - minX) * scale;
+      const ty = (py) => offsetY + (py - minY) * scale;
+
+      // Terrain (chunks)
+      const chunks = [];
+      let chunk = [];
+      for (let i = 0; i < points.length; i++) {
+        chunk.push(points[i]);
+        if (points[i].gap && i < points.length - 1) { chunks.push(chunk); chunk = []; }
+      }
+      if (chunk.length) chunks.push(chunk);
+      g.fillStyle(0x4a3a2a);
+      for (const c of chunks) {
+        if (c.length < 2) continue;
+        let cMinX = c[0].x, cMaxX = c[0].x;
+        for (const p of c) { if (p.x < cMinX) cMinX = p.x; if (p.x > cMaxX) cMaxX = p.x; }
+        g.beginPath();
+        g.moveTo(tx(cMinX), cy + h / 2 - padY);
+        g.lineTo(tx(c[0].x), ty(c[0].y));
+        c.forEach(p => g.lineTo(tx(p.x), ty(p.y)));
+        g.lineTo(tx(cMaxX), cy + h / 2 - padY);
+        g.closePath();
+        g.fillPath();
+      }
+      // Ligne d'herbe (vert clair sur le dessus)
+      g.lineStyle(1.5, 0x55aa44);
+      for (let i = 0; i < points.length - 1; i++) {
+        if (points[i].gap) continue;
+        g.lineBetween(tx(points[i].x), ty(points[i].y), tx(points[i + 1].x), ty(points[i + 1].y));
+      }
+      // Plafonds (si polygones organiques)
+      if (lvl.ceilings && lvl.ceilings.length > 0 && lvl.ceilings[0].w === undefined) {
+        const cChunks = [];
+        let cChunk = [];
+        for (let i = 0; i < lvl.ceilings.length; i++) {
+          cChunk.push(lvl.ceilings[i]);
+          if (lvl.ceilings[i].gap && i < lvl.ceilings.length - 1) { cChunks.push(cChunk); cChunk = []; }
+        }
+        if (cChunk.length) cChunks.push(cChunk);
+        g.fillStyle(0x4a3a2a);
+        for (const c of cChunks) {
+          if (c.length < 2) continue;
+          let cMinX = c[0].x, cMaxX = c[0].x;
+          for (const p of c) { if (p.x < cMinX) cMinX = p.x; if (p.x > cMaxX) cMaxX = p.x; }
+          g.beginPath();
+          g.moveTo(tx(cMinX), cy - h / 2 + padY);
+          g.lineTo(tx(c[0].x), ty(c[0].y));
+          c.forEach(p => g.lineTo(tx(p.x), ty(p.y)));
+          g.lineTo(tx(cMaxX), cy - h / 2 + padY);
+          g.closePath();
+          g.fillPath();
+        }
+      } else if (lvl.ceilings && lvl.ceilings.length > 0) {
+        g.fillStyle(0x4a3a2a);
+        lvl.ceilings.forEach(c => {
+          g.fillRect(tx(c.x - c.w / 2), ty(c.y - c.h / 2), c.w * scale, c.h * scale);
+        });
+      }
+      // Drapeau d'arrivée
+      if (lvl.finishX !== undefined) {
+        const lastP = points[points.length - 1];
+        const fx = tx(lvl.finishX);
+        const fyTop = ty(lastP.y - 200);
+        const fyBot = ty(lastP.y);
+        g.lineStyle(1.5, 0xffffff);
+        g.lineBetween(fx, fyTop, fx, fyBot);
+        g.fillStyle(0xff5533);
+        g.fillTriangle(fx, fyTop, fx + 10, fyTop + 5, fx, fyTop + 10);
+      }
+      // Obstacles (petits points rouges)
+      if (lvl.obstacles) {
+        g.fillStyle(0xaa3333);
+        lvl.obstacles.forEach(o => g.fillRect(tx(o.x) - 1, ty(o.y) - 1, 2, 2));
       }
     }
 
@@ -5558,6 +6484,120 @@
   // ===========================================================
   // REPLAY SCENE — lecture d'une run enregistrée (multi P2P)
   // ===========================================================
+  // ===========================================================
+  // RÉCAP FINAL D'UN BO EN SALON PRIVÉ (N joueurs)
+  // ===========================================================
+  class PrivateBOEndScene extends Phaser.Scene {
+    constructor() { super('PrivateBOEnd'); }
+
+    init(data) {
+      this.bestPerMap = data.bestPerMap || [];      // [{seqIdx, mapIdx, scores, winnerId, winnerReplay}]
+      this.myId = data.myId;
+      this.myPseudo = data.myPseudo || '?';
+      this.players = data.players || [];
+    }
+
+    create() {
+      const w = this.scale.width;
+      const h = this.scale.height;
+
+      this.add.rectangle(0, 0, w, h, 0x000000, 0.88).setOrigin(0).setScrollFactor(0);
+
+      this.add.text(w / 2, 60, '🏆  BO TERMINÉ', {
+        font: 'bold 44px sans-serif', color: '#ffdd44',
+        stroke: '#000', strokeThickness: 5
+      }).setOrigin(0.5);
+
+      // Calcul des wins par joueur
+      const wins = new Map();   // playerId → { pseudo, count }
+      this.bestPerMap.forEach(b => {
+        if (b.winnerId) {
+          const pseudo = (b.scores.find(s => s.id === b.winnerId) || {}).pseudo || '?';
+          const cur = wins.get(b.winnerId) || { pseudo, count: 0 };
+          cur.count++;
+          wins.set(b.winnerId, cur);
+        }
+      });
+      const standings = Array.from(wins.entries())
+        .map(([id, v]) => ({ id, pseudo: v.pseudo, wins: v.count }))
+        .sort((a, b) => b.wins - a.wins);
+
+      // Vainqueur global
+      if (standings.length > 0) {
+        const champ = standings[0];
+        const isMe = champ.id === this.myId;
+        this.add.text(w / 2, 130, '🥇  CHAMPION  🥇', {
+          font: 'bold 16px sans-serif', color: '#ffdd44'
+        }).setOrigin(0.5);
+        this.add.text(w / 2, 175, champ.pseudo + (isMe ? ' (toi)' : ''), {
+          font: 'bold 48px sans-serif',
+          color: isMe ? '#44ff66' : '#ff8844',
+          stroke: '#000', strokeThickness: 5
+        }).setOrigin(0.5);
+        this.add.text(w / 2, 220, champ.wins + ' map(s) gagnée(s)', {
+          font: 'bold 14px sans-serif', color: '#fff'
+        }).setOrigin(0.5);
+      } else {
+        this.add.text(w / 2, 175, 'aucun gagnant', {
+          font: 'bold 32px sans-serif', color: '#ff8866'
+        }).setOrigin(0.5);
+      }
+
+      // Standings (top 5)
+      this.add.text(w / 2, 260, 'CLASSEMENT', {
+        font: 'bold 12px sans-serif', color: '#ffaa66'
+      }).setOrigin(0.5);
+      standings.slice(0, 8).forEach((s, i) => {
+        const isMe = s.id === this.myId;
+        const medal = ['🥇', '🥈', '🥉'][i] || (i + 1) + '.';
+        this.add.text(w / 2, 285 + i * 22, `${medal}  ${s.pseudo}${isMe ? ' (toi)' : ''}  —  ${s.wins} win(s)`, {
+          font: 'bold 14px monospace',
+          color: isMe ? '#ffdd44' : '#fff'
+        }).setOrigin(0.5);
+      });
+
+      // Détails par map (avec bouton replay du gagnant si dispo)
+      const detailY = Math.max(420, 285 + Math.min(8, standings.length) * 22 + 20);
+      this.add.text(w / 2, detailY, 'PAR MAP', {
+        font: 'bold 12px sans-serif', color: '#ffaa66'
+      }).setOrigin(0.5);
+      this.bestPerMap.forEach((b, i) => {
+        const lvl = LEVELS[b.mapIdx];
+        const winner = b.winnerId ? (b.scores.find(s => s.id === b.winnerId) || {}) : null;
+        const winStr = winner ? `${winner.pseudo} (${winner.time.toFixed(2)}s)` : 'aucun';
+        const txt = `${i + 1}. ${lvl.name}  —  ${winStr}`;
+        const yLine = detailY + 25 + i * 30;
+        this.add.text(w / 2 - 80, yLine, txt, {
+          font: 'bold 13px monospace', color: '#fff'
+        }).setOrigin(0.5);
+        if (b.winnerReplay) {
+          const btn = this.add.text(w / 2 + 180, yLine, '▶  Replay', {
+            font: 'bold 11px sans-serif', color: '#fff',
+            backgroundColor: '#44aa44', padding: { x: 10, y: 4 }
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+          btn.on('pointerdown', () => {
+            this.scene.start('Replay', {
+              replay: b.winnerReplay,
+              level: b.mapIdx,
+              returnTo: 'Menu'
+            });
+          });
+        }
+      });
+
+      // Boutons retour
+      const backBtn = this.add.text(w / 2, h - 50, 'Retour menu', {
+        font: 'bold 18px sans-serif', color: '#fff',
+        backgroundColor: '#ff5533', padding: { x: 26, y: 12 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      backBtn.on('pointerdown', () => {
+        ServerConn.disconnect();
+        this.scene.stop('Game');
+        this.scene.start('Menu');
+      });
+    }
+  }
+
   class ReplayScene extends Phaser.Scene {
     constructor() { super('Replay'); }
 
@@ -6038,7 +7078,7 @@
         debug: false
       }
     },
-    scene: [MenuScene, HelpScene, GameSetupScene, MultiScene, ServerRoomScene, LeaderboardScene, GameScene, GameOverScene, ChallengeEndScene, ReplayScene]
+    scene: [MenuScene, HelpScene, GameSetupScene, MultiScene, ServerRoomScene, PrivateRoomScene, LeaderboardScene, GameScene, GameOverScene, ChallengeEndScene, PrivateBOEndScene, ReplayScene]
   };
 
   const game = new Phaser.Game(config);
