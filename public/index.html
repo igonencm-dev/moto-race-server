@@ -4877,24 +4877,22 @@
       }
 
       // === Boost actif : pulse de force pendant 0.6s ===
-      // dt précalculé pour le boost (même normalisation que les inputs)
-      const boostDt = Math.min(2.5, Math.max(0.3, delta / 16.67));
       if (this.boostActive) {
         if (time >= this.boostEndsAt) {
           this.boostActive = false;
         } else if (!this.crashed && !this.finished && !this.privateTimeUpLock) {
           const a = this.bike.chassis.angle;
           Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
-            x: Math.cos(a) * 0.0035 * boostDt,
-            y: Math.sin(a) * 0.0035 * boostDt
+            x: Math.cos(a) * 0.0035,
+            y: Math.sin(a) * 0.0035
           });
         }
       }
 
       // === Inputs (flèches + ZQSD/WASD) ===
-      // dt = facteur de normalisation par rapport à 60 fps (16.67ms par frame).
-      // Sans ça, un joueur à 144Hz applique 2.4× plus de forces par seconde → vitesse de fou.
-      const dt = Math.min(2.5, Math.max(0.3, delta / 16.67));
+      // Note : avec le cap FPS à 60Hz dans la config Phaser, tous les clients
+      // tournent au même rate. Pas besoin de scaling par dt (qui ne marche pas
+      // avec l'intégration Verlet de Matter, car les forces dépendent de dt²).
       if (!this.crashed && !this.finished && !this.privateTimeUpLock) {
         const accel = this.cursors.right.isDown || this.keyD.isDown;
         const brake = this.cursors.left.isDown || this.keyA.isDown || this.keyQ.isDown;
@@ -4902,43 +4900,41 @@
         const tiltDown = this.cursors.down.isDown || this.keyS.isDown;
 
         if (accel) {
-          // roues qui tournent vite (incréments scalés par dt pour être uniformes peu importe le FPS)
           Matter.Body.setAngularVelocity(this.bike.wheelBack,
-            Math.min(this.bike.wheelBack.angularVelocity + 0.10 * dt, 1.2));
+            Math.min(this.bike.wheelBack.angularVelocity + 0.10, 1.2));
           Matter.Body.setAngularVelocity(this.bike.wheelFront,
-            Math.min(this.bike.wheelFront.angularVelocity + 0.05 * dt, 1.2));
-          // poussée horizontale (force scalée par dt)
+            Math.min(this.bike.wheelFront.angularVelocity + 0.05, 1.2));
           const a = this.bike.chassis.angle;
           Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
-            x: Math.cos(a) * 0.0024 * dt,
-            y: Math.sin(a) * 0.0024 * dt
+            x: Math.cos(a) * 0.0024,
+            y: Math.sin(a) * 0.0024
           });
         }
         if (brake) {
           Matter.Body.setAngularVelocity(this.bike.wheelBack,
-            Math.max(this.bike.wheelBack.angularVelocity - 0.09 * dt, -0.6));
+            Math.max(this.bike.wheelBack.angularVelocity - 0.09, -0.6));
           Matter.Body.setAngularVelocity(this.bike.wheelFront,
-            Math.max(this.bike.wheelFront.angularVelocity - 0.09 * dt, -0.6));
+            Math.max(this.bike.wheelFront.angularVelocity - 0.09, -0.6));
           const a = this.bike.chassis.angle;
           Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
-            x: -Math.cos(a) * 0.0012 * dt,
-            y: -Math.sin(a) * 0.0012 * dt
+            x: -Math.cos(a) * 0.0012,
+            y: -Math.sin(a) * 0.0012
           });
         }
         if (tiltUp) {
           const onGround = this.contactCount > 0;
           const boost = (accel && onGround) ? 0.038 : 0.022;
           Matter.Body.setAngularVelocity(this.bike.chassis,
-            Math.max(this.bike.chassis.angularVelocity - boost * dt, -0.8));
+            Math.max(this.bike.chassis.angularVelocity - boost, -0.8));
           if (accel && onGround) {
             Matter.Body.applyForce(this.bike.chassis, this.bike.chassis.position, {
-              x: 0, y: -0.0010 * dt
+              x: 0, y: -0.0010
             });
           }
         }
         if (tiltDown) {
           Matter.Body.setAngularVelocity(this.bike.chassis,
-            Math.min(this.bike.chassis.angularVelocity + 0.022 * dt, 0.8));
+            Math.min(this.bike.chassis.angularVelocity + 0.022, 0.8));
         }
       }
 
@@ -7713,6 +7709,16 @@
     scale: {
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    // CAP FPS À 60Hz POUR TOUT LE MONDE.
+    // Sans ça, un joueur sur écran 144Hz voit la moto se déplacer différemment
+    // qu'un joueur sur 60Hz (Matter.js intègre les forces avec dt², donc framerate
+    // = vitesse). forceSetTimeOut: true bypass le requestAnimationFrame du browser
+    // et utilise setTimeout calé sur target=60. Tout le monde a la même physique.
+    fps: {
+      target: 60,
+      forceSetTimeOut: true,
+      smoothStep: false
     },
     physics: {
       default: 'matter',
